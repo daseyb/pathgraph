@@ -44,6 +44,20 @@
                         </table>
                     </div>
                 </div>
+
+                <div class="panel panel-primary">
+                    <div class="panel-heading">
+                        <h2 class="panel-title"><a data-toggle="collapse" href="#code-body">Code</a></h2>
+                    </div>
+                    <div id="code-body" class="panel-collapse collapse scroll-panel">
+                        <div id="editor">
+function foo(items) {
+    var x = "All this is syntax highlighted";
+    return x;
+}
+                        </div>
+                    </div>
+                </div>
             </div>
             <div id="workspace-center">
                 <div id="svg-wrapper"><svg id="svg-container" /></div>
@@ -54,6 +68,8 @@
 
             </div>
         </div>
+
+
     </div>
 
     <footer id="footer">
@@ -70,7 +86,12 @@
         <li><a tabindex="-1" href="#">Separated link</a></li>
     </ul>
 
-
+    <script src="node_modules/ace-builds/src/ace.js"></script>
     <script src="external.js"></script>
+    <script>
+        var editor = ace.edit("editor");
+        editor.setTheme("ace/theme/monokai");
+        editor.getSession().setMode("ace/mode/javascript");
+    </script>
 </body>
 </html>

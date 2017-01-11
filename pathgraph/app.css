@@ -104,6 +104,11 @@ body {
     padding-top: 5px;
 }
 
+#editor {
+    width: 100%;
+    min-height: 100px;
+}
+
 html {
     position: relative;
     min-height: 100%;
