@@ -20,7 +20,8 @@ font-style: italic, oblique;
 }
 
 body {
-font-family: "Computer Modern", sans-serif;
+    font-family: "Computer Modern", sans-serif;
+    margin-bottom: 60px;
 }
 
 #header {
@@ -79,11 +80,31 @@ font-family: "Computer Modern", sans-serif;
     margin-right: 10px;
 }
 
+#svg-wrapper {
+    height: 400px;
+    box-shadow: rgba(0, 0, 0, 0.4) 0px 0px 2px 2px;
+}
+
 #svg-container {
     align-items: center;
     display: flex;
     justify-content: center;
     align-self: center;
     width: 100%;
-    box-shadow: rgba(0, 0, 0, 0.4) 0px 0px 2px 2px;
+    height: 100%;
+}
+
+#footer {
+    position: absolute;
+    bottom: 0;
+    width: 100%;
+    /* Set the fixed height of the footer here */
+    height: 40px;
+    background-color: #f5f5f5;
+    padding-top: 5px;
+}
+
+html {
+    position: relative;
+    min-height: 100%;
 }

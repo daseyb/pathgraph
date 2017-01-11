@@ -46,7 +46,7 @@
                 </div>
             </div>
             <div id="workspace-center">
-                <svg id="svg-container" height="720" />
+                <div id="svg-wrapper"><svg id="svg-container" /></div>
                 <br />
                 <a target="_blank" onmousedown="saveSvg()" id="save-button" href="#" class="btn btn-default btn-lg btn-block">Save as SVG</a>
             </div>
@@ -56,6 +56,12 @@
         </div>
     </div>
 
+    <footer id="footer">
+        <div class="container">
+            <p class="text-muted text-center">Made by <a href="//darioseyb.com">Dario Seyb</a></p>
+        </div>
+    </footer>
+
     <ul id="contextMenu" class="dropdown-menu" role="menu" style="display:none">
         <li><a tabindex="-1" href="#">Action</a></li>
         <li><a tabindex="-1" href="#">Another action</a></li>
@@ -63,6 +69,8 @@
         <li class="divider"></li>
         <li><a tabindex="-1" href="#">Separated link</a></li>
     </ul>
+
+
     <script src="external.js"></script>
 </body>
 </html>
