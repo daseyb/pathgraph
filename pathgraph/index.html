@@ -1,0 +1,46 @@
+﻿<!DOCTYPE html>
+
+<html lang="en">
+<head>
+    <meta charset="utf-8" />
+    <title>Path Graph</title>
+    <link rel="stylesheet" href="Content/bootstrap.min.css" type="text/css" />
+    <link rel="stylesheet" href="app.css" type="text/css" />
+    <script src="Scripts/jquery-1.9.1.min.js"></script>
+    <script src="Scripts/bootstrap.min.js"></script>
+    <script src="Scripts/snap/snap.svg.js"></script>
+    <script src="node_modules/knockout/build/output/knockout-latest.js"></script>
+    <script src="app.js"></script>
+</head>
+<body>
+
+    <div id="content">
+        <h1>Path Graph</h1>
+        <div id="workspace-main">
+            <svg id="svg-container" height="720"/>
+            <br />
+            <a target="_blank"  onmousedown="saveSvg()" id="save-button" href="#" class="btn btn-default btn-lg btn-block">Save as SVG</a>
+        </div>
+
+        <table>
+            <thead>
+                <tr>
+                    <th>Passenger name</th>
+                    <th>Meal</th>
+                    <th>Surcharge</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <!-- Todo: Generate table body -->
+            <tbody data-bind="foreach: shapes">
+                <tr>
+                    <td data-bind="text: pos()"></td>
+                    <td data-bind="text: scale()"></td>
+                    <td data-bind="text: rot()"></td>
+                </tr>
+            </tbody>
+        </table>
+
+    </div>
+</body>
+</html>

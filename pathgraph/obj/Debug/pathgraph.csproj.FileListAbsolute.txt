@@ -1,0 +1,6 @@
+c:\dev\pathgraph\pathgraph\bin\pathgraph.dll.config
+c:\dev\pathgraph\pathgraph\bin\pathgraph.dll
+c:\dev\pathgraph\pathgraph\bin\pathgraph.pdb
+c:\dev\pathgraph\pathgraph\obj\Debug\pathgraph.csprojResolveAssemblyReference.cache
+c:\dev\pathgraph\pathgraph\obj\Debug\pathgraph.dll
+c:\dev\pathgraph\pathgraph\obj\Debug\pathgraph.pdb

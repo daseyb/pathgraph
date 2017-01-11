@@ -1,0 +1,11 @@
+{
+  "name": "pathgraph",
+  "version": "0.0.1",
+  "author": "Dario Seyb",
+  "description": "Create beautiful visualizations of path tracing algorithms.",
+  "dependencies": {
+    "@types/snapsvg": "^0.4.27",
+    "knockout": "^3.4.1",
+    "@types/knockout": "*"
+  }
+}

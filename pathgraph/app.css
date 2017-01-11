@@ -1,0 +1,48 @@
+﻿@font-face {
+font-family: "Computer Modern";
+src: url('fonts/cmunss.otf');
+}
+@font-face {
+font-family: "Computer Modern";
+src: url('fonts/cmunsx.otf');
+font-weight: bold;
+}
+@font-face {
+font-family: "Computer Modern";
+src: url('fonts/cmunsi.otf');
+font-style: italic, oblique;
+}
+@font-face {
+font-family: "Computer Modern";
+src: url('fonts/cmunbxo.otf');
+font-weight: bold;
+font-style: italic, oblique;
+}
+
+body {
+font-family: "Computer Modern", sans-serif;
+}
+
+#content {
+    display:flex;
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    padding-left: 30px;
+    padding-right: 30px;
+    flex-direction: column;
+}
+
+#workspace-main {
+    max-width: 1280px;
+    width: 100%;
+}
+
+#svg-container {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    align-self: center;
+    width: 100%;
+    box-shadow: rgba(0, 0, 0, 0.4) 0px 0px 2px 2px;
+}
