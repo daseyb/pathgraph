@@ -23,6 +23,11 @@ body {
 font-family: "Computer Modern", sans-serif;
 }
 
+#header {
+    align-self: flex-start;
+    margin-top: 0px;
+}
+
 #content {
     display:flex;
     align-items: center;
@@ -34,8 +39,44 @@ font-family: "Computer Modern", sans-serif;
 }
 
 #workspace-main {
+    width: 100%;
+    display: flex;
+    align-items: stretch;
+    flex-direction: row;
+    justify-content: center;
+}
+
+.scroll-panel {
+    max-height: 400px;
+    overflow-y: scroll;
+}
+
+
+#workspace-left {
+    min-width: 400px;
+    max-width: 400px;
+    height: 100%;
+    display: flex; 
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+#workspace-right {
+    min-width: 220px;
+    max-width: 220px;
+    height: 100%;
+    display: flex; 
+    align-items: stretch;
+    flex-direction: column;
+    justify-content: flex-start;
+}
+
+#workspace-center {
     max-width: 1280px;
     width: 100%;
+    margin-left: 10px;
+    margin-right: 10px;
 }
 
 #svg-container {

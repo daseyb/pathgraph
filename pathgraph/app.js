@@ -1,5 +1,6 @@
 /// <reference path="node_modules/@types/snapsvg/index.d.ts"/>
 /// <reference path="node_modules/@types/knockout/index.d.ts"/>
+/// <reference path="node_modules/@types/jquery/index.d.ts"/>
 var __extends = (this && this.__extends) || function (d, b) {
     for (var p in b) if (b.hasOwnProperty(p)) d[p] = b[p];
     function __() { this.constructor = d; }
@@ -100,7 +101,7 @@ var Material = (function () {
     Material.prototype.update = function () {
         for (var _i = 0, _a = this.linkedElements; _i < _a.length; _i++) {
             var el = _a[_i];
-            this.apply(el.svgElement);
+            this.apply(el.svgElement());
         }
     };
     Material.prototype.apply = function (el) {
@@ -115,13 +116,12 @@ var Material = (function () {
     };
     Material.prototype.applyTo = function (el) {
         if (el.material) {
-            var index = el.material.linkedElements.indexOf(el);
+            var index = el.material().linkedElements.indexOf(el);
             if (index != -1)
-                el.material.linkedElements.splice(index, 1);
+                el.material().linkedElements.splice(index, 1);
         }
-        el.material = this;
         this.linkedElements.push(el);
-        this.apply(el.svgElement);
+        this.apply(el.svgElement());
     };
     return Material;
 }());
@@ -130,54 +130,78 @@ var CAM_MATERIAL = new Material(Snap.rgb(0, 0, 0), Snap.rgb(200, 200, 200), 1.0,
 var PATH_MATERIAL = new Material(Snap.rgb(0, 255, 0), Snap.rgb(200, 200, 200), 1.0, 0.0, 2);
 var Thing = (function () {
     function Thing(s) {
+        var _this = this;
         this.paper = s;
+        this.svgObserver = new MutationObserver(function (recs, inst) {
+            _this.svgElement.valueHasMutated();
+        });
+        this.svgElement = ko.observable();
+        this.material = ko.observable(DEFAULT_MATERIAL);
+        this.material.subscribe(function (newValue) {
+            _this.material().applyTo(_this);
+        });
+        this.transform = ko.computed({
+            read: function () {
+                if (!_this.svgElement())
+                    return Snap.matrix();
+                var trans = _this.svgElement().transform().globalMatrix;
+                return trans;
+            },
+            write: function (val) {
+                if (!_this.svgElement())
+                    return;
+                _this.svgElement().attr({ transform: val });
+            },
+            owner: this
+        });
+        this.pos = ko.computed({
+            read: function () {
+                var trans = _this.transform();
+                var split = trans.split();
+                return new Vec2(split.dx, split.dy);
+            },
+            write: function (val) {
+                var trans = _this.transform();
+                var split = trans.split();
+                trans.translate(-split.dx + val.x, -split.dy + val.y);
+                _this.transform(trans);
+            },
+            owner: this
+        });
+        this.scale = ko.computed({
+            read: function () {
+                var trans = _this.transform();
+                var split = trans.split();
+                return new Vec2(split.scalex, split.scaley);
+            },
+            write: function (val) {
+                var trans = _this.transform();
+                var split = trans.split();
+                trans.scale(val.x / split.scalex, val.y / split.scaley);
+                _this.transform(trans);
+            },
+            owner: this
+        });
+        this.rot = ko.computed({
+            read: function () {
+                var trans = _this.transform();
+                var split = trans.split();
+                return split.rotate;
+            },
+            write: function (val) {
+                var trans = _this.transform();
+                var split = trans.split();
+                trans.rotate(-split.rotate + val);
+                _this.transform(trans);
+            },
+            owner: this
+        });
     }
     Thing.prototype.setup = function () {
-        this.svgElement = this.makeSvg(this.paper);
-        this.setMaterial(DEFAULT_MATERIAL);
-    };
-    Thing.prototype.setMaterial = function (mat) {
-        this.material = mat;
-        this.material.applyTo(this);
-    };
-    Thing.prototype.transform = function () {
-        return this.svgElement.transform().globalMatrix;
-    };
-    Thing.prototype.pos = function () {
-        var trans = this.transform();
-        var split = trans.split();
-        return new Vec2(split.dx, split.dy);
-    };
-    Thing.prototype.rot = function () {
-        var trans = this.transform();
-        var split = trans.split();
-        return split.rotate;
-    };
-    Thing.prototype.scale = function () {
-        var trans = this.transform();
-        var split = trans.split();
-        return new Vec2(split.scalex, split.scaley);
-    };
-    Thing.prototype.setTransform = function (mat) {
-        this.svgElement.attr({ transform: mat });
-    };
-    Thing.prototype.setPos = function (pos) {
-        var trans = this.transform();
-        var split = trans.split();
-        trans.translate(-split.dx + pos.x, -split.dy + pos.y);
-        this.setTransform(trans);
-    };
-    Thing.prototype.setRotation = function (rot) {
-        var trans = this.transform();
-        var split = trans.split();
-        trans.rotate(-split.rotate + rot);
-        this.setTransform(trans);
-    };
-    Thing.prototype.setScale = function (scale) {
-        var trans = this.transform();
-        var split = trans.split();
-        trans.scale(scale.x / split.scalex, scale.y / split.scaley);
-        this.setTransform(trans);
+        this.svgElement(this.makeSvg(this.paper));
+        this.material(DEFAULT_MATERIAL);
+        this.svgObserver.observe(this.svgElement().node, { attributes: true });
+        this.svgElement.valueHasMutated();
     };
     Thing.prototype.makeSvg = function (s) {
         return null;
@@ -187,7 +211,7 @@ var Thing = (function () {
 var Shape = (function (_super) {
     __extends(Shape, _super);
     function Shape(s) {
-        _super.call(this, s);
+        return _super.call(this, s) || this;
     }
     Shape.prototype.intersect = function (ray, result) { return false; };
     return Shape;
@@ -195,10 +219,11 @@ var Shape = (function (_super) {
 var Circle = (function (_super) {
     __extends(Circle, _super);
     function Circle(pos, rad, s) {
-        _super.call(this, s);
-        this.setup();
-        this.setPos(pos);
-        this.setScale(new Vec2(rad, rad));
+        var _this = _super.call(this, s) || this;
+        _this.setup();
+        _this.pos(pos);
+        _this.scale(new Vec2(rad, rad));
+        return _this;
     }
     Circle.prototype.intersect = function (ray, result) {
         ray = transformRay(ray, this.transform().invert());
@@ -238,10 +263,11 @@ var Circle = (function (_super) {
 var Box = (function (_super) {
     __extends(Box, _super);
     function Box(pos, size, s) {
-        _super.call(this, s);
-        this.setup();
-        this.setPos(pos);
-        this.setScale(size);
+        var _this = _super.call(this, s) || this;
+        _this.setup();
+        _this.pos(pos);
+        _this.scale(size);
+        return _this;
     }
     Box.prototype.intersect = function (ray, result) {
         ray = transformRay(ray, this.transform().invert());
@@ -283,9 +309,10 @@ var Box = (function (_super) {
 var Polygon = (function (_super) {
     __extends(Polygon, _super);
     function Polygon(points, s) {
-        _super.call(this, s);
-        this.points = points;
-        this.setup();
+        var _this = _super.call(this, s) || this;
+        _this.points = points;
+        _this.setup();
+        return _this;
     }
     Polygon.prototype.intersect = function (ray, result) {
         ray = transformRay(ray, this.transform().invert());
@@ -326,25 +353,25 @@ var Polygon = (function (_super) {
 var Camera = (function (_super) {
     __extends(Camera, _super);
     function Camera(pos, rot, s) {
-        _super.call(this, s);
-        this.setup();
-        this.setPos(pos);
-        this.setRotation(rot);
+        var _this = _super.call(this, s) || this;
+        _this.setup();
+        _this.pos(pos);
+        _this.rot(rot);
+        return _this;
     }
     Camera.prototype.forward = function () {
         return transformDir(new Vec2(1, 0), this.transform());
     };
     Camera.prototype.lookAt = function (target, pos) {
-        var trans = this.transform().split();
         if (!pos) {
-            pos = new Vec2(trans.dx, trans.dy);
+            pos = this.pos();
         }
         else {
-            this.setPos(pos);
+            this.pos(pos);
         }
         var dir = normalize(sub(target, pos));
         var angle = Snap.angle(1, 0, dir.x, dir.y);
-        this.setRotation(angle);
+        this.rot(angle);
     };
     Camera.prototype.makeSvg = function (s) {
         var el = s.path("M 0,0 30,30 A 60,60 1 0,0 30,-30 Z");
@@ -361,9 +388,10 @@ var PathData = (function () {
 var Path = (function (_super) {
     __extends(Path, _super);
     function Path(data, s) {
-        _super.call(this, s);
-        this.data = data;
-        this.setup();
+        var _this = _super.call(this, s) || this;
+        _this.data = data;
+        _this.setup();
+        return _this;
     }
     Path.prototype.makeSvg = function (s) {
         var posArray = [];
@@ -388,15 +416,17 @@ var Path = (function (_super) {
 var Scene = (function (_super) {
     __extends(Scene, _super);
     function Scene(sampler, s) {
-        _super.call(this, s);
-        this.sampler = sampler;
-        this.shapes = ko.observableArray([]);
-        this.paths = [];
-        this.cameras = ko.observableArray([]);
-        this.materials = ko.observableArray([]);
-        this.setup();
-        s.drag(this.onMove, null, this.onDragEnd, this, this, this);
-        this.recalculatePaths();
+        var _this = _super.call(this, s) || this;
+        _this.sampler = sampler;
+        _this.shapes = ko.observableArray([]);
+        _this.paths = [];
+        _this.cameras = ko.observableArray([]);
+        _this.materials = ko.observableArray([]);
+        _this.setup();
+        s.undrag();
+        s.drag(_this.onMove, null, _this.onDragEnd, _this, _this, _this);
+        _this.recalculatePaths();
+        return _this;
     }
     Scene.prototype.onDragEnd = function (event) {
         this.recalculatePaths();
@@ -407,7 +437,7 @@ var Scene = (function (_super) {
     Scene.prototype.recalculatePaths = function () {
         for (var _i = 0, _a = this.paths; _i < _a.length; _i++) {
             var path = _a[_i];
-            path.svgElement.remove();
+            path.svgElement().remove();
         }
         this.paths = [];
         for (var _b = 0, _c = this.cameras(); _b < _c.length; _b++) {
@@ -423,13 +453,13 @@ var Scene = (function (_super) {
     };
     Scene.prototype.addCamera = function (cam) {
         this.cameras.push(cam);
-        cam.svgElement.drag();
+        cam.svgElement().drag();
         this.recalculatePaths();
     };
     Scene.prototype.addShape = function (shape) {
         this.shapes.push(shape);
-        this.svgElement.add(shape.svgElement);
-        shape.svgElement.drag();
+        this.svgElement().add(shape.svgElement());
+        shape.svgElement().drag();
         this.recalculatePaths();
     };
     Scene.prototype.intersect = function (ray, result) {
@@ -504,8 +534,8 @@ window.onload = function () {
     scene.addCamera(cam);
     scene.addShape(new Circle(new Vec2(150, 150), 50, s));
     var deformedCircle = new Circle(new Vec2(250, 150), 30, s);
-    deformedCircle.setScale(new Vec2(30.0, 10.0));
-    deformedCircle.setRotation(0);
+    deformedCircle.scale(new Vec2(30.0, 10.0));
+    deformedCircle.rot(0);
     scene.addShape(deformedCircle);
     scene.addShape(new Box(new Vec2(250, 50), new Vec2(20, 40), s));
     var mat = Snap.matrix();
@@ -519,7 +549,7 @@ window.onload = function () {
         points.push(mul(p, Math.sin(angle * 4) * 0.5 * Math.cos(angle + 10) + 2.0));
     }
     var poly = new Polygon(points, s);
-    poly.setScale(new Vec2(40, 40));
+    poly.scale(new Vec2(40, 40));
     scene.addShape(poly);
     ko.applyBindings(scene);
 };

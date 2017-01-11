@@ -1,5 +1,6 @@
 ﻿/// <reference path="node_modules/@types/snapsvg/index.d.ts"/>
 /// <reference path="node_modules/@types/knockout/index.d.ts"/>
+/// <reference path="node_modules/@types/jquery/index.d.ts"/>
 
 class Vec2 {
     x: number;
@@ -132,7 +133,7 @@ class Material {
 
     update() {
         for (var el of this.linkedElements) {
-            this.apply(el.svgElement);
+            this.apply(el.svgElement());
         }
     }
 
@@ -149,12 +150,11 @@ class Material {
 
     applyTo(el: Thing) {
         if (el.material) {
-            var index = el.material.linkedElements.indexOf(el);
-            if (index != -1) el.material.linkedElements.splice(index, 1);
+            var index = el.material().linkedElements.indexOf(el);
+            if (index != -1) el.material().linkedElements.splice(index, 1);
         }
-        el.material = this;
         this.linkedElements.push(el);
-        this.apply(el.svgElement);
+        this.apply(el.svgElement());
     }
     
 }
@@ -165,70 +165,101 @@ var PATH_MATERIAL: Material = new Material(Snap.rgb(0, 255, 0), Snap.rgb(200, 20
 
 class Thing {
     paper: Snap.Paper;
-    svgElement: Snap.Element;
-    material: Material;
+    svgElement: KnockoutObservable<Snap.Element>;
+    material: KnockoutObservable<Material>;
+
+    pos: KnockoutComputed<Vec2>;
+    scale: KnockoutComputed<Vec2>;
+    rot: KnockoutComputed<number>;
+
+    transform: KnockoutComputed<Snap.Matrix>;
+
+    svgObserver: MutationObserver;
 
     constructor(s: Snap.Paper) {
         this.paper = s;
+
+        this.svgObserver = new MutationObserver((recs: MutationRecord[], inst: MutationObserver) => {
+            this.svgElement.valueHasMutated();
+        });
+
+        this.svgElement = ko.observable<Snap.Element>();
+
+        this.material = ko.observable<Material>(DEFAULT_MATERIAL);
+        this.material.subscribe((newValue: Material) => {
+            this.material().applyTo(this);
+        });
+
+        this.transform = ko.computed<Snap.Matrix>({
+            read: () => {
+                if (!this.svgElement()) return Snap.matrix();
+                var trans = this.svgElement().transform().globalMatrix;
+                return trans;
+            },
+            write: (val: Snap.Matrix) => {
+                if (!this.svgElement()) return;
+                this.svgElement().attr({ transform: val });
+            },
+            owner: this
+        });
+
+
+        this.pos = ko.computed<Vec2>({
+            read: () => {
+                var trans = this.transform();
+                var split = trans.split();
+                return new Vec2(split.dx, split.dy);
+            },
+            write: (val: Vec2) => {
+                var trans = this.transform();
+                var split = trans.split();
+                trans.translate(-split.dx + val.x, -split.dy + val.y);
+                this.transform(trans);
+            },
+            owner: this
+        });
+
+        this.scale = ko.computed<Vec2>({
+            read: () => {
+                var trans = this.transform();
+                var split = trans.split();
+                return new Vec2(split.scalex, split.scaley);
+            },
+            write: (val: Vec2) => {
+                var trans = this.transform();
+                var split = trans.split();
+                trans.scale(val.x / split.scalex, val.y / split.scaley);
+                this.transform(trans);
+            },
+            owner: this
+        });
+
+        this.rot = ko.computed<number>({
+            read: () => {
+                var trans = this.transform();
+                var split = trans.split();
+                return split.rotate;
+            },
+            write: (val: number) => {
+                var trans = this.transform();
+                var split = trans.split();
+                trans.rotate(-split.rotate + val);
+                this.transform(trans);
+            },
+            owner: this
+        });
+
+
     }
 
     setup() {
-        this.svgElement = this.makeSvg(this.paper);
-        this.setMaterial(DEFAULT_MATERIAL);
-    }
+        this.svgElement(this.makeSvg(this.paper));
+        this.material(DEFAULT_MATERIAL);
 
-    setMaterial(mat: Material) {
-        this.material = mat;
-        this.material.applyTo(this);
-    }
+        this.svgObserver.observe(this.svgElement().node, { attributes: true });
 
-    transform(): Snap.Matrix {
-        return this.svgElement.transform().globalMatrix;
+        this.svgElement.valueHasMutated();
     }
-
-    pos(): Vec2 {
-        var trans = this.transform();
-        var split = trans.split();
-        return new Vec2(split.dx, split.dy);
-    }
-
-    rot(): number {
-        var trans = this.transform();
-        var split = trans.split();
-        return split.rotate;
-    }
-
-    scale(): Vec2 {
-        var trans = this.transform();
-        var split = trans.split();
-        return new Vec2(split.scalex, split.scaley);
-    }
-
-    setTransform(mat: Snap.Matrix) {
-        this.svgElement.attr({ transform: mat });
-    }
-
-    setPos(pos: Vec2) {
-        var trans = this.transform();
-        var split = trans.split();
-        trans.translate(-split.dx + pos.x, -split.dy + pos.y);
-        this.setTransform(trans);
-    }
-
-    setRotation(rot: number) {
-        var trans = this.transform();
-        var split = trans.split();
-        trans.rotate(-split.rotate + rot);
-        this.setTransform(trans);
-    }
-
-    setScale(scale: Vec2) {
-        var trans = this.transform();
-        var split = trans.split();
-        trans.scale(scale.x / split.scalex, scale.y / split.scaley);
-        this.setTransform(trans);
-    }
-
 
     makeSvg(s: Snap.Paper): Snap.Element {
         return null;
@@ -242,14 +273,16 @@ class Shape extends Thing {
     }
 
     intersect(ray: Ray, result: Intersection): boolean { return false }
+
+
 }
 
 class Circle extends Shape {
     constructor(pos: Vec2, rad: number, s: Snap.Paper) {
         super(s);
         this.setup();
-        this.setPos(pos);
-        this.setScale(new Vec2(rad, rad));
+        this.pos(pos);
+        this.scale(new Vec2(rad, rad));
     }
 
     intersect(ray: Ray, result : Intersection) {
@@ -300,8 +333,8 @@ class Box extends Shape {
     constructor(pos: Vec2, size: Vec2, s: Snap.Paper) {
         super(s);
         this.setup();
-        this.setPos(pos);
-        this.setScale(size);
+        this.pos(pos);
+        this.scale(size);
     }
 
     intersect(ray: Ray, result: Intersection) {
@@ -407,8 +440,8 @@ class Camera extends Thing {
     constructor(pos: Vec2, rot: number, s: Snap.Paper) {
         super(s);
         this.setup();
-        this.setPos(pos);
-        this.setRotation(rot);
+        this.pos(pos);
+        this.rot(rot);
     }
 
     forward() {
@@ -416,16 +449,15 @@ class Camera extends Thing {
     }
 
     lookAt(target: Vec2, pos?: Vec2) {
-        var trans = this.transform().split();
         if (!pos) {
-            pos = new Vec2(trans.dx, trans.dy);
+            pos = this.pos();
         } else {
-            this.setPos(pos);
+            this.pos(pos);
         }
 
         var dir = normalize(sub(target, pos));
         var angle = Snap.angle(1, 0, dir.x, dir.y);
-        this.setRotation(angle);
+        this.rot(angle);
     }
 
     makeSvg(s: Snap.Paper) {
@@ -498,6 +530,8 @@ class Scene extends Shape {
         this.cameras = ko.observableArray<Camera>([]);
         this.materials = ko.observableArray<Material>([]);
         this.setup();
+
+        s.undrag();
         s.drag(this.onMove, null, this.onDragEnd, this, this, this);
 
         this.recalculatePaths();
@@ -512,8 +546,9 @@ class Scene extends Shape {
     }
 
     recalculatePaths() {
+
         for (var path of this.paths) {
-            path.svgElement.remove();
+            path.svgElement().remove();
         }
 
         this.paths = [];
@@ -526,18 +561,19 @@ class Scene extends Shape {
                 this.paths.push(path);
             }
         }
+
     }
 
     addCamera(cam: Camera) {
         this.cameras.push(cam);
-        cam.svgElement.drag();
+        cam.svgElement().drag();
         this.recalculatePaths();
     }
 
     addShape(shape: Shape) {
         this.shapes.push(shape);
-        this.svgElement.add(shape.svgElement);
-        shape.svgElement.drag();
+        this.svgElement().add(shape.svgElement());
+        shape.svgElement().drag();
         this.recalculatePaths();
     }
 
@@ -637,8 +673,8 @@ window.onload = () => {
     scene.addShape(new Circle(new Vec2(150, 150), 50, s));
 
     var deformedCircle = new Circle(new Vec2(250, 150), 30, s);
-    deformedCircle.setScale(new Vec2(30.0, 10.0));
-    deformedCircle.setRotation(0);
+    deformedCircle.scale(new Vec2(30.0, 10.0));
+    deformedCircle.rot(0);
     scene.addShape(deformedCircle);
     scene.addShape(new Box(new Vec2(250, 50), new Vec2(20, 40), s));
 
@@ -661,11 +697,13 @@ window.onload = () => {
 
     var poly = new Polygon(points, s);
 
-    poly.setScale(new Vec2(40, 40));
+    poly.scale(new Vec2(40, 40));
 
     scene.addShape(poly);
 
     ko.applyBindings(scene);
+
+    
 }
 
 function saveSvg() {

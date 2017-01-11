@@ -9,38 +9,60 @@
     <script src="Scripts/jquery-1.9.1.min.js"></script>
     <script src="Scripts/bootstrap.min.js"></script>
     <script src="Scripts/snap/snap.svg.js"></script>
-    <script src="node_modules/knockout/build/output/knockout-latest.js"></script>
+    <script src="node_modules/knockout/build/output/knockout-latest.debug.js"></script>
     <script src="app.js"></script>
+
 </head>
 <body>
-
     <div id="content">
-        <h1>Path Graph</h1>
-        <div id="workspace-main">
-            <svg id="svg-container" height="720"/>
-            <br />
-            <a target="_blank"  onmousedown="saveSvg()" id="save-button" href="#" class="btn btn-default btn-lg btn-block">Save as SVG</a>
+        <div class="page-header" id="header">
+            <h1>Path Graph<small>Pretty visualizations for ray tracing algorithms.</small></h1>
         </div>
+        <div id="workspace-main">
+            <div id="workspace-left">
+                <div class="panel panel-primary">
+                    <div class="panel-heading">
+                        <h2 class="panel-title"><a data-toggle="collapse" href="#objects-body">Objects</a></h2>
+                    </div>
+                    <div id="objects-body" class="panel-collapse collapse scroll-panel">
+                        <table class="table table-striped">
+                            <thead>
+                                <tr>
+                                    <th>Position</th>
+                                    <th>Scale</th>
+                                    <th>Rotation</th>
+                                </tr>
+                            </thead>
+                            <!-- Todo: Generate table body -->
+                            <tbody data-bind="foreach: shapes">
+                                <tr>
+                                    <td data-bind="text: pos()"></td>
+                                    <td data-bind="text: scale()"></td>
+                                    <td data-bind="text: rot()"></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            <div id="workspace-center">
+                <svg id="svg-container" height="720" />
+                <br />
+                <a target="_blank" onmousedown="saveSvg()" id="save-button" href="#" class="btn btn-default btn-lg btn-block">Save as SVG</a>
+            </div>
+            <div id="workspace-right">
 
-        <table>
-            <thead>
-                <tr>
-                    <th>Passenger name</th>
-                    <th>Meal</th>
-                    <th>Surcharge</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <!-- Todo: Generate table body -->
-            <tbody data-bind="foreach: shapes">
-                <tr>
-                    <td data-bind="text: pos()"></td>
-                    <td data-bind="text: scale()"></td>
-                    <td data-bind="text: rot()"></td>
-                </tr>
-            </tbody>
-        </table>
-
+            </div>
+        </div>
     </div>
+
+    <ul id="contextMenu" class="dropdown-menu" role="menu" style="display:none">
+        <li><a tabindex="-1" href="#">Action</a></li>
+        <li><a tabindex="-1" href="#">Another action</a></li>
+        <li><a tabindex="-1" href="#">Something else here</a></li>
+        <li class="divider"></li>
+        <li><a tabindex="-1" href="#">Separated link</a></li>
+    </ul>
+    <script src="external.js"></script>
 </body>
 </html>
