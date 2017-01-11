@@ -6,6 +6,13 @@ var __extends = (this && this.__extends) || function (d, b) {
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
+var COLOR_PRIMARY = ko.observable(Snap.getRGB("#2C3E50"));
+var COLOR_SUCCESS = ko.observable(Snap.getRGB("#18BC9C"));
+var COLOR_INFO = ko.observable(Snap.getRGB("#3498DB"));
+var COLOR_WARNING = ko.observable(Snap.getRGB("#F39C12"));
+var COLOR_DANGER = ko.observable(Snap.getRGB("#E74C3C"));
+var BACKGROUND_COLOR = ko.observable(Snap.getRGB("rgb(200, 200, 200)"));
+var CAM_OUTLINE = COLOR_PRIMARY; // ko.observable<Snap.RGB>(Snap.getRGB("rgb(60, 60, 60)"));
 var Vec2 = (function () {
     function Vec2(x, y) {
         this.x = x;
@@ -91,12 +98,15 @@ function transformRay(ray, mat) {
 }
 var Material = (function () {
     function Material(outlineColor, fillColor, outlineOpacity, fillOpacity, outlineWidth) {
+        var _this = this;
         this.outlineColor = outlineColor;
         this.fillColor = fillColor;
         this.outlineOpacity = outlineOpacity;
         this.fillOpacity = fillOpacity;
         this.outlineWidth = outlineWidth;
         this.linkedElements = [];
+        this.outlineColor.subscribe(function (newValue) { _this.update(); });
+        this.fillColor.subscribe(function (newValue) { _this.update(); });
     }
     Material.prototype.update = function () {
         for (var _i = 0, _a = this.linkedElements; _i < _a.length; _i++) {
@@ -106,12 +116,11 @@ var Material = (function () {
     };
     Material.prototype.apply = function (el) {
         el.attr({
-            fill: this.fillOpacity > 0.01 ? this.fillColor : "none",
-            stroke: this.outlineColor,
-            strokeWidth: this.outlineWidth,
+            fill: this.fillOpacity > 0.01 ? this.fillColor().hex : "none",
+            stroke: this.outlineColor().hex,
+            strokeWidth: this.outlineWidth / (el.transform().localMatrix ? el.transform().localMatrix.split().scalex : 1),
             "fill-opacity": this.fillOpacity,
             "stroke-opacity": this.outlineOpacity,
-            "vector-effect": "non-scaling-stroke",
         });
     };
     Material.prototype.applyTo = function (el) {
@@ -125,9 +134,10 @@ var Material = (function () {
     };
     return Material;
 }());
-var DEFAULT_MATERIAL = new Material(Snap.rgb(255, 0, 0), Snap.rgb(200, 200, 200), 1.0, 0.5, 2);
-var CAM_MATERIAL = new Material(Snap.rgb(0, 0, 0), Snap.rgb(200, 200, 200), 1.0, 0.5, 2);
-var PATH_MATERIAL = new Material(Snap.rgb(0, 255, 0), Snap.rgb(200, 200, 200), 1.0, 0.0, 2);
+var DEFAULT_MATERIAL = new Material(COLOR_DANGER, BACKGROUND_COLOR, 1.0, 0.25, 2);
+var CAM_MATERIAL = new Material(CAM_OUTLINE, BACKGROUND_COLOR, 1.0, 0.25, 2);
+var PATH_MATERIAL = new Material(COLOR_SUCCESS, BACKGROUND_COLOR, 1.0, 0.0, 2);
+var LIGHT_MATERIAL = new Material(COLOR_WARNING, BACKGROUND_COLOR, 1.0, 0.25, 0.5);
 var Thing = (function () {
     function Thing(s) {
         var _this = this;
@@ -137,9 +147,6 @@ var Thing = (function () {
         });
         this.svgElement = ko.observable();
         this.material = ko.observable(DEFAULT_MATERIAL);
-        this.material.subscribe(function (newValue) {
-            _this.material().applyTo(_this);
-        });
         this.transform = ko.computed({
             read: function () {
                 if (!_this.svgElement())
@@ -151,6 +158,7 @@ var Thing = (function () {
                 if (!_this.svgElement())
                     return;
                 _this.svgElement().attr({ transform: val });
+                _this.material().apply(_this.svgElement());
             },
             owner: this
         });
@@ -198,9 +206,23 @@ var Thing = (function () {
         });
     }
     Thing.prototype.setup = function () {
+        var _this = this;
         this.svgElement(this.makeSvg(this.paper));
+        this.material.subscribe(function (newValue) {
+            _this.material().applyTo(_this);
+        });
         this.material(DEFAULT_MATERIAL);
         this.svgObserver.observe(this.svgElement().node, { attributes: true });
+        this.svgElement().node.addEventListener("mousewheel", function (ev) {
+            if (ev.shiftKey) {
+                _this.scale(add(_this.scale(), mul(new Vec2(1, 1), ev.wheelDelta * 0.02)));
+            }
+            else {
+                _this.rot(_this.rot() + ev.wheelDelta * 0.1);
+            }
+            ev.preventDefault();
+            ev.stopPropagation();
+        });
         this.svgElement.valueHasMutated();
     };
     Thing.prototype.makeSvg = function (s) {
@@ -216,6 +238,65 @@ var Shape = (function (_super) {
     Shape.prototype.intersect = function (ray, result) { return false; };
     return Shape;
 }(Thing));
+var Light = (function (_super) {
+    __extends(Light, _super);
+    function Light(pos, rad, s) {
+        var _this = _super.call(this, s) || this;
+        _this.setup();
+        _this.pos(pos);
+        _this.scale(new Vec2(rad, rad));
+        return _this;
+    }
+    Light.prototype.intersect = function (ray, result) {
+        ray = transformRay(ray, this.transform().invert());
+        var t0;
+        var t1; // solutions for t if the ray intersects 
+        var L = mul(ray.o, -1);
+        var tca = dot(L, ray.d);
+        var d2 = dot(L, L) - tca * tca;
+        if (d2 > 1)
+            return false;
+        var thc = Math.sqrt(1 - d2);
+        t0 = tca - thc;
+        t1 = tca + thc;
+        if (t0 > t1) {
+            var tmp = t0;
+            t0 = t1;
+            t1 = tmp;
+        }
+        if (t0 < 0) {
+            t0 = t1; // if t0 is negative, let's use t1 instead 
+            if (t0 < 0)
+                return false; // both t0 and t1 are negative 
+        }
+        result.p = add(ray.o, mul(ray.d, t0));
+        result.n = normalize(result.p);
+        result.p = transformPoint(result.p, this.transform());
+        result.n = transformDir(result.n, this.transform());
+        return true;
+    };
+    Light.prototype.makeSvg = function (s) {
+        var g = s.group();
+        var circle = s.circle(0, 0, 1);
+        LIGHT_MATERIAL.apply(circle);
+        g.add(circle);
+        var mat = Snap.matrix();
+        var xAxis = new Vec2(1, 0);
+        var count = 10;
+        for (var i = 0; i < count; i++) {
+            mat.rotate(360 / count);
+            var angle = 360 / count * i;
+            var p = mul(transformPoint(xAxis, mat), 5);
+            var line = s.line(0, 0, p.x, p.y);
+            LIGHT_MATERIAL.apply(line);
+            g.add(line);
+        }
+        LIGHT_MATERIAL.apply(g);
+        g.data("thing", this);
+        return g;
+    };
+    return Light;
+}(Shape));
 var Circle = (function (_super) {
     __extends(Circle, _super);
     function Circle(pos, rad, s) {
@@ -374,9 +455,21 @@ var Camera = (function (_super) {
         this.rot(angle);
     };
     Camera.prototype.makeSvg = function (s) {
-        var el = s.path("M 0,0 30,30 A 60,60 1 0,0 30,-30 Z");
-        el.data("thing", this);
-        return el;
+        var g = s.group();
+        var el = s.path("M 0,0 20,15 A 40,40 1 0,0 20,-15 Z");
+        CAM_MATERIAL.apply(el);
+        g.add(el);
+        var line = s.line(0, 0, 26, 20);
+        CAM_MATERIAL.apply(line);
+        g.add(line);
+        var line = s.line(0, 0, 26, -20);
+        CAM_MATERIAL.apply(line);
+        g.add(line);
+        var circle = s.ellipse(19, 0, 2, 4);
+        CAM_MATERIAL.apply(circle);
+        g.add(circle);
+        g.data("thing", this);
+        return g;
     };
     return Camera;
 }(Thing));
@@ -423,6 +516,7 @@ var Scene = (function (_super) {
         _this.cameras = ko.observableArray([]);
         _this.materials = ko.observableArray([]);
         _this.setup();
+        $(_this.svgElement().node).off("mouswheel");
         s.undrag();
         s.drag(_this.onMove, null, _this.onDragEnd, _this, _this, _this);
         _this.recalculatePaths();
@@ -442,7 +536,8 @@ var Scene = (function (_super) {
         this.paths = [];
         for (var _b = 0, _c = this.cameras(); _b < _c.length; _b++) {
             var cam = _c[_b];
-            var startRay = new Ray(cam.pos(), cam.forward());
+            var fwd = cam.forward();
+            var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
             var newPaths = this.sampler.tracePath(startRay, 10, this);
             for (var _d = 0, newPaths_1 = newPaths; _d < newPaths_1.length; _d++) {
                 var p = newPaths_1[_d];
@@ -474,6 +569,7 @@ var Scene = (function (_super) {
                 if (dist < minDist) {
                     result.p = intersect.p;
                     result.n = intersect.n;
+                    result.shape = shape;
                     minDist = dist;
                 }
             }
@@ -494,14 +590,17 @@ var SinglePathSampler = (function () {
     SinglePathSampler.prototype.tracePath = function (ray, depth, scene) {
         var path = new PathData();
         path.points = [];
-        path.points.push({ p: ray.o, n: ray.d });
+        path.points.push({ p: ray.o, n: ray.d, shape: null });
         for (var i = 0; i < depth; i++) {
             var intersect = new Intersection();
             if (!scene.intersect(ray, intersect)) {
-                path.points.push({ p: add(ray.o, mul(ray.d, 20000)), n: ray.d });
+                path.points.push({ p: add(ray.o, mul(ray.d, 20000)), n: ray.d, shape: null });
                 break;
             }
             path.points.push(intersect);
+            if (intersect.shape instanceof Light) {
+                break;
+            }
             ray.o = intersect.p;
             ray.d = reflect(ray.d, intersect.n);
             ray.o = add(ray.o, mul(ray.d, 0.1));
@@ -516,11 +615,13 @@ function makeRaySVG(s, r, length) {
 }
 function toDataUrl(e, maxWidth, maxHeight) {
     var bb = e.getBBox();
-    var svg = Snap.format('<svg version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{width}" height="{height}" viewBox="{x} {y} {width} {height}">{contents}</svg>', {
-        x: Math.max(+bb.x.toFixed(3), 0),
-        y: Math.max(+bb.y.toFixed(3), 0),
-        width: Math.min(+bb.width.toFixed(3), maxWidth),
-        height: Math.min(+bb.height.toFixed(3), maxHeight),
+    var x = Math.max(+bb.x.toFixed(3), 0);
+    var y = Math.max(+bb.y.toFixed(3), 0);
+    var svg = Snap.format('<svg version="1.2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{width}" height="{height}" viewBox="{x} {y} {width} {height}">{contents}</svg>', {
+        x: x - 3,
+        y: y - 3,
+        width: Math.min(+bb.width.toFixed(3), maxWidth) + x + 3,
+        height: Math.min(+bb.height.toFixed(3), maxHeight) + y + 3,
         contents: e.outerSVG()
     });
     return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
@@ -533,6 +634,7 @@ window.onload = function () {
     var scene = new Scene(new SinglePathSampler(), s);
     scene.addCamera(cam);
     scene.addShape(new Circle(new Vec2(150, 150), 50, s));
+    scene.addShape(new Light(new Vec2(300, 200), 4, s));
     var deformedCircle = new Circle(new Vec2(250, 150), 30, s);
     deformedCircle.scale(new Vec2(30.0, 10.0));
     deformedCircle.rot(0);
@@ -555,8 +657,10 @@ window.onload = function () {
 };
 function saveSvg() {
     var svgEl = document.getElementById("svg-container");
-    var width = svgEl.clientWidth;
-    var height = svgEl.clientHeight;
+    var width = $(svgEl).width();
+    var height = $(svgEl).height();
+    console.log(width);
+    console.log(height);
     var saveButton = document.getElementById("save-button");
     saveButton.setAttribute("href", toDataUrl(s, width, height));
 }
