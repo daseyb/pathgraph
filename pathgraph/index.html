@@ -45,18 +45,16 @@
                     </div>
                 </div>
 
-                <div class="panel panel-primary">
+                <div class="panel panel-info">
                     <div class="panel-heading">
                         <h2 class="panel-title"><a data-toggle="collapse" href="#code-body">Intersection Code</a></h2>
                     </div>
                     <div class="panel-body">
-                        Input <code>intersect</code> and <code>ray</code>, output <code>[Vec2]</code>
+                        <code>function sampleDir(intersect, ray) => [Vec2]</code>
                     </div>
                     <div id="code-body" class="panel-collapse collapse scroll-panel">
-                        <div id="editor">
-var d = reflect(ray.d, intersect.n);
-return [d];
-                        </div>
+                        <div id="editor">var d = reflect(ray.d, intersect.n);
+return [d];</div>
                     </div>
                     <div id="code-footer" class="panel-footer"></div>
                 </div>
@@ -107,6 +105,18 @@ return [d];
                 $("#code-footer").text(syntaxError.name + "-" + syntaxError.message);
             }
         });
+
+        if (sampleDirFunc) {
+            try {
+                var intersectFunc = new Function("intersect", "ray", editor.getValue());
+                sampleDirFunc(intersectFunc);
+                $("#code-footer").text("No Errors");
+
+            }
+            catch (syntaxError) {
+                $("#code-footer").text(syntaxError.name + "-" + syntaxError.message);
+            }
+        }
     </script>
 
     <script>
