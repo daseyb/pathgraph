@@ -20,6 +20,19 @@
         </div>
         <div id="workspace-main">
             <div id="workspace-left">
+                <div class="panel panel-success">
+                    <div class="panel-heading">
+                        <h2 class="panel-title"><a data-toggle="collapse" href="#settings-body">Settings</a></h2>
+                    </div>
+                    <div id="settings-body" class="panel-collapse collapse scroll-panel" style="margin-left: 10px;">
+                        <div class="form-group">
+                            <div class="checkbox">
+                                <label><input type="checkbox" data-bind="checked: renderPathDensity">Render Path Density</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="panel panel-primary">
                     <div class="panel-heading">
                         <h2 class="panel-title"><a data-toggle="collapse" href="#objects-body">Objects</a></h2>
@@ -53,14 +66,16 @@
                         <code>function sampleDir(intersect, ray) => [Vec2]</code>
                     </div>
                     <div id="code-body" class="panel-collapse collapse scroll-panel">
-                        <div id="editor">var d = reflect(ray.d, intersect.n);
-return [d];</div>
+                        <div id="editor">return [cosineSampleHemisphere(intersect.n)];</div>
                     </div>
                     <div id="code-footer" class="panel-footer"></div>
                 </div>
             </div>
             <div id="workspace-center">
-                <div id="svg-wrapper"><svg id="svg-container" /></div>
+                <div id="svg-wrapper">
+                    <canvas id="density"></canvas>
+                    <svg id="svg-container" />
+                </div>
                 <br />
                 <a target="_blank" onmousedown="saveSvg()" id="save-button" href="#" class="btn btn-default btn-lg btn-block">Save as SVG</a>
             </div>
@@ -120,13 +135,15 @@ return [d];</div>
     </script>
 
     <script>
-  (function(i,s,o,g,r,a,m){i['GoogleAnalyticsObject']=r;i[r]=i[r]||function(){
-  (i[r].q=i[r].q||[]).push(arguments)},i[r].l=1*new Date();a=s.createElement(o),
-  m=s.getElementsByTagName(o)[0];a.async=1;a.src=g;m.parentNode.insertBefore(a,m)
-  })(window,document,'script','https://www.google-analytics.com/analytics.js','ga');
+        (function (i, s, o, g, r, a, m) {
+            i['GoogleAnalyticsObject'] = r; i[r] = i[r] || function () {
+                (i[r].q = i[r].q || []).push(arguments)
+            }, i[r].l = 1 * new Date(); a = s.createElement(o),
+            m = s.getElementsByTagName(o)[0]; a.async = 1; a.src = g; m.parentNode.insertBefore(a, m)
+        })(window, document, 'script', 'https://www.google-analytics.com/analytics.js', 'ga');
 
-  ga('create', 'UA-36574384-2', 'auto');
-  ga('send', 'pageview');
+        ga('create', 'UA-36574384-2', 'auto');
+        ga('send', 'pageview');
 
     </script>
 </body>

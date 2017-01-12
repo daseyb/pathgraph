@@ -63,6 +63,29 @@ function cross(a, b) {
 function perp(a) {
     return new Vec2(-a.y, a.x);
 }
+function uniformSampleHemisphere(n) {
+    var Xi1 = Math.random();
+    var Xi2 = Math.random();
+    var theta = Xi1;
+    var phi = 2.0 * Math.PI * Xi2;
+    var f = Math.sqrt(1 - theta * theta);
+    var x = f * Math.cos(phi);
+    var y = theta;
+    var dir = new Vec2(x, y);
+    dir = mul(dir, sign(dot(dir, n)));
+    return dir;
+}
+function cosineSampleHemisphere(n) {
+    var Xi1 = Math.random();
+    var Xi2 = Math.random();
+    var theta = Xi1;
+    var phi = 2.0 * Math.PI * Xi2;
+    var f = Math.sqrt(1 - theta);
+    var x = f * Math.cos(phi);
+    var y = Math.sqrt(theta);
+    var xDir = perp(n);
+    return add(mul(xDir, x), mul(n, y));
+}
 var Ray = (function () {
     function Ray(o, d) {
         this.o = o;
@@ -142,10 +165,10 @@ var Material = (function () {
     };
     return Material;
 }());
-var DEFAULT_MATERIAL = new Material(COLOR_DANGER, BACKGROUND_COLOR, 1.0, 0.25, 2);
-var CAM_MATERIAL = new Material(CAM_OUTLINE, BACKGROUND_COLOR, 1.0, 0.25, 2);
-var PATH_MATERIAL = new Material(COLOR_SUCCESS, BACKGROUND_COLOR, 1.0, 0.0, 2);
-var LIGHT_MATERIAL = new Material(COLOR_WARNING, BACKGROUND_COLOR, 1.0, 0.25, 0.5);
+var DEFAULT_MATERIAL = ko.observable(new Material(COLOR_DANGER, BACKGROUND_COLOR, 1.0, 0.25, 2));
+var CAM_MATERIAL = ko.observable(new Material(CAM_OUTLINE, BACKGROUND_COLOR, 1.0, 0.25, 2));
+var PATH_MATERIAL = ko.observable(new Material(COLOR_SUCCESS, BACKGROUND_COLOR, 1.0, 0.0, 2));
+var LIGHT_MATERIAL = ko.observable(new Material(COLOR_WARNING, BACKGROUND_COLOR, 1.0, 0.25, 0.5));
 var Thing = (function () {
     function Thing(s) {
         var _this = this;
@@ -154,7 +177,7 @@ var Thing = (function () {
             _this.svgElement.valueHasMutated();
         });
         this.svgElement = ko.observable();
-        this.material = ko.observable(DEFAULT_MATERIAL);
+        this.material = DEFAULT_MATERIAL;
         this.transform = ko.computed({
             read: function () {
                 if (!_this.svgElement())
@@ -219,8 +242,9 @@ var Thing = (function () {
         this.material.subscribe(function (newValue) {
             _this.material().applyTo(_this);
         });
-        this.material(DEFAULT_MATERIAL);
-        this.svgObserver.observe(this.svgElement().node, { attributes: true });
+        this.material = DEFAULT_MATERIAL;
+        this.material.subscribe(function (newValue) { console.log("Test"); newValue.applyTo(_this); }, this);
+        this.svgObserver.observe(this.svgElement().node, { attributes: true, subtree: true });
         this.svgElement().node.addEventListener("mousewheel", function (ev) {
             if (ev.shiftKey) {
                 _this.scale(add(_this.scale(), mul(new Vec2(1, 1), ev.wheelDelta * 0.02)));
@@ -286,7 +310,7 @@ var Light = (function (_super) {
     Light.prototype.makeSvg = function (s) {
         var g = s.group();
         var circle = s.circle(0, 0, 1);
-        LIGHT_MATERIAL.apply(circle);
+        LIGHT_MATERIAL().apply(circle);
         g.add(circle);
         var mat = Snap.matrix();
         var xAxis = new Vec2(1, 0);
@@ -296,10 +320,10 @@ var Light = (function (_super) {
             var angle = 360 / count * i;
             var p = mul(transformPoint(xAxis, mat), 5);
             var line = s.line(0, 0, p.x, p.y);
-            LIGHT_MATERIAL.apply(line);
+            LIGHT_MATERIAL().apply(line);
             g.add(line);
         }
-        LIGHT_MATERIAL.apply(g);
+        LIGHT_MATERIAL().apply(g);
         g.data("thing", this);
         return g;
     };
@@ -465,16 +489,16 @@ var Camera = (function (_super) {
     Camera.prototype.makeSvg = function (s) {
         var g = s.group();
         var el = s.path("M 0,0 20,15 A 40,40 1 0,0 20,-15 Z");
-        CAM_MATERIAL.apply(el);
+        CAM_MATERIAL().apply(el);
         g.add(el);
         var line = s.line(0, 0, 26, 20);
-        CAM_MATERIAL.apply(line);
+        CAM_MATERIAL().apply(line);
         g.add(line);
         var line = s.line(0, 0, 26, -20);
-        CAM_MATERIAL.apply(line);
+        CAM_MATERIAL().apply(line);
         g.add(line);
         var circle = s.ellipse(19, 0, 2, 4);
-        CAM_MATERIAL.apply(circle);
+        CAM_MATERIAL().apply(circle);
         g.add(circle);
         g.data("thing", this);
         return g;
@@ -501,15 +525,13 @@ var Path = (function (_super) {
             var i = _a[_i];
             posArray.push(i.p.x, i.p.y);
             var normTarget = add(i.p, mul(i.n, 10));
-            var norm = s.line(i.p.x, i.p.y, normTarget.x, normTarget.y);
-            DEFAULT_MATERIAL.apply(norm);
-            g.add(norm);
         }
         var line = s.polyline(posArray);
-        PATH_MATERIAL.apply(line);
+        PATH_MATERIAL().apply(line);
         g.add(line);
         g.data("thing", this);
         g.attr({ "z-index": -1 });
+        PATH_MATERIAL.subscribe(function (mat) { mat.apply(line); }, this);
         return g;
     };
     return Path;
@@ -518,6 +540,8 @@ var Scene = (function (_super) {
     __extends(Scene, _super);
     function Scene(sampler, s) {
         var _this = _super.call(this, s) || this;
+        _this.renderedPathsCount = ko.observable(0);
+        _this.renderPathDensity = ko.observable(false);
         _this.sampler = sampler;
         _this.shapes = ko.observableArray([]);
         _this.paths = [];
@@ -526,45 +550,82 @@ var Scene = (function (_super) {
         _this.setup();
         $(_this.svgElement().node).off("mouswheel");
         s.undrag();
-        s.drag(_this.onMove, null, _this.onDragEnd, _this, _this, _this);
         sampleDirFunc.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
-        _this.recalculatePaths();
+        _this.svgElement.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
+        _this.renderPathDensity.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
         return _this;
     }
-    Scene.prototype.onDragEnd = function (event) {
-        this.recalculatePaths();
-    };
-    Scene.prototype.onMove = function (dx, dy, x, y, event) {
-        this.recalculatePaths();
-    };
     Scene.prototype.recalculatePaths = function () {
+        var _this = this;
         for (var _i = 0, _a = this.paths; _i < _a.length; _i++) {
             var path = _a[_i];
             path.svgElement().remove();
         }
         this.paths = [];
-        for (var _b = 0, _c = this.cameras(); _b < _c.length; _b++) {
-            var cam = _c[_b];
+        this.renderedPathsCount(0);
+        this.canvas.clearRect(0, 0, 10000, 10000);
+        if (this.renderPathDensity()) {
+            window.requestAnimationFrame(function () { return _this.updateDensity(); });
+        }
+        else {
+            for (var _b = 0, _c = this.cameras(); _b < _c.length; _b++) {
+                var cam = _c[_b];
+                var fwd = cam.forward();
+                var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
+                var newPaths = this.sampler.tracePath(startRay, 3, this);
+                for (var _d = 0, newPaths_1 = newPaths; _d < newPaths_1.length; _d++) {
+                    var p = newPaths_1[_d];
+                    var path = new Path(p, this.paper);
+                    this.paths.push(path);
+                }
+            }
+        }
+    };
+    Scene.prototype.updateDensity = function () {
+        var _this = this;
+        if (!this.renderPathDensity())
+            return;
+        this.canvas.globalCompositeOperation = "soft-light";
+        for (var _i = 0, _a = this.cameras(); _i < _a.length; _i++) {
+            var cam = _a[_i];
             var fwd = cam.forward();
             var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
-            var newPaths = this.sampler.tracePath(startRay, 3, this);
-            for (var _d = 0, newPaths_1 = newPaths; _d < newPaths_1.length; _d++) {
-                var p = newPaths_1[_d];
-                var path = new Path(p, this.paper);
-                this.paths.push(path);
+            var renderPaths = [];
+            for (var i = 0; i < 10; i++) {
+                var newPaths = this.sampler.tracePath(startRay, 6, this);
+                for (var _b = 0, newPaths_2 = newPaths; _b < newPaths_2.length; _b++) {
+                    var p = newPaths_2[_b];
+                    renderPaths.push(p);
+                }
             }
+            this.renderedPathsCount(this.renderedPathsCount() + 10);
+            this.canvas.strokeStyle = PATH_MATERIAL().outlineColor().hex;
+            this.canvas.lineWidth = 0.4;
+            this.canvas.globalAlpha = 0.02;
+            for (var _c = 0, renderPaths_1 = renderPaths; _c < renderPaths_1.length; _c++) {
+                var p = renderPaths_1[_c];
+                this.canvas.beginPath();
+                this.canvas.moveTo(p.points[0].p.x, p.points[0].p.y);
+                for (var _d = 0, _e = p.points; _d < _e.length; _d++) {
+                    var point = _e[_d];
+                    this.canvas.lineTo(point.p.x, point.p.y);
+                }
+                this.canvas.stroke();
+            }
+        }
+        if (this.renderedPathsCount() < 50000) {
+            window.requestAnimationFrame(function () { return _this.updateDensity(); });
         }
     };
     Scene.prototype.addCamera = function (cam) {
         this.cameras.push(cam);
+        this.svgElement().add(cam.svgElement());
         cam.svgElement().drag();
-        this.recalculatePaths();
     };
     Scene.prototype.addShape = function (shape) {
         this.shapes.push(shape);
         this.svgElement().add(shape.svgElement());
         shape.svgElement().drag();
-        this.recalculatePaths();
     };
     Scene.prototype.intersect = function (ray, result) {
         var minDist = 2000000;
@@ -652,8 +713,8 @@ var ScriptedPathSampler = (function () {
                     d: dir
                 };
                 var newPaths = this.tracePath(r, depth - 1, scene);
-                for (var _a = 0, newPaths_2 = newPaths; _a < newPaths_2.length; _a++) {
-                    var newPath = newPaths_2[_a];
+                for (var _a = 0, newPaths_3 = newPaths; _a < newPaths_3.length; _a++) {
+                    var newPath = newPaths_3[_a];
                     result.push(newPath);
                 }
             }
@@ -687,12 +748,19 @@ var s;
 window.onload = function () {
     s = Snap("#svg-container");
     var cam = new Camera(new Vec2(100, 100), 45, s);
-    CAM_MATERIAL.applyTo(cam);
+    CAM_MATERIAL().applyTo(cam);
     var pathSampler = new ScriptedPathSampler();
     pathSampler.sampleDir = sampleDirFunc;
     var scene = new Scene(pathSampler, s);
+    var canvas = document.getElementById("density");
+    var svgEl = document.getElementById("svg-container");
+    var width = $(svgEl).width();
+    var height = $(svgEl).height();
+    canvas.width = width;
+    canvas.height = height;
+    scene.canvas = canvas.getContext("2d");
     scene.addCamera(cam);
-    scene.addShape(new Circle(new Vec2(150, 150), 50, s));
+    scene.addShape(new Circle(new Vec2(250, 280), 50, s));
     scene.addShape(new Light(new Vec2(300, 200), 4, s));
     var deformedCircle = new Circle(new Vec2(250, 150), 30, s);
     deformedCircle.scale(new Vec2(30.0, 10.0));

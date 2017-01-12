@@ -76,6 +76,41 @@ function perp(a: Vec2) {
     return new Vec2(-a.y, a.x);
 }
 
+
+function uniformSampleHemisphere(n: Vec2) {
+    var Xi1 = Math.random();
+    var Xi2 = Math.random();
+
+    var theta = Xi1;
+    var phi = 2.0 * Math.PI * Xi2;
+
+    var f = Math.sqrt(1 - theta * theta);
+
+    var x = f * Math.cos(phi);
+    var y = theta;
+
+    var dir = new Vec2(x, y);
+    dir = mul(dir, sign(dot(dir, n)));
+    return dir;
+}
+
+function cosineSampleHemisphere(n: Vec2) {
+    var Xi1 = Math.random();
+    var Xi2 = Math.random();
+
+    var theta = Xi1;
+    var phi = 2.0 * Math.PI * Xi2;
+
+    var f = Math.sqrt(1 - theta);
+
+    var x = f * Math.cos(phi);
+    var y = Math.sqrt(theta);
+
+    var xDir = perp(n);
+    return add(mul(xDir, x),  mul(n,y));
+}
+
+
 class Ray {
     o: Vec2;
     d: Vec2;
@@ -182,10 +217,10 @@ class Material {
 }
 
 
-var DEFAULT_MATERIAL: Material = new Material(COLOR_DANGER, BACKGROUND_COLOR, 1.0, 0.25, 2);
-var CAM_MATERIAL: Material = new Material(CAM_OUTLINE, BACKGROUND_COLOR, 1.0, 0.25, 2);
-var PATH_MATERIAL: Material = new Material(COLOR_SUCCESS, BACKGROUND_COLOR, 1.0, 0.0, 2);
-var LIGHT_MATERIAL: Material = new Material(COLOR_WARNING, BACKGROUND_COLOR, 1.0, 0.25, 0.5);
+var DEFAULT_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(COLOR_DANGER, BACKGROUND_COLOR, 1.0, 0.25, 2));
+var CAM_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(CAM_OUTLINE, BACKGROUND_COLOR, 1.0, 0.25, 2));
+var PATH_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(COLOR_SUCCESS, BACKGROUND_COLOR, 1.0, 0.0, 2));
+var LIGHT_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(COLOR_WARNING, BACKGROUND_COLOR, 1.0, 0.25, 0.5));
 
 class Thing {
     paper: Snap.Paper;
@@ -209,7 +244,8 @@ class Thing {
 
         this.svgElement = ko.observable<Snap.Element>();
 
-        this.material = ko.observable<Material>(DEFAULT_MATERIAL);
+        this.material = DEFAULT_MATERIAL;
+
 
         this.transform = ko.computed<Snap.Matrix>({
             read: () => {
@@ -281,9 +317,10 @@ class Thing {
             this.material().applyTo(this);
         });
 
-        this.material(DEFAULT_MATERIAL);
+        this.material = DEFAULT_MATERIAL;
+        this.material.subscribe((newValue) => { console.log("Test"); newValue.applyTo(this); }, this);
 
-        this.svgObserver.observe(this.svgElement().node, { attributes: true });
+        this.svgObserver.observe(this.svgElement().node, { attributes: true, subtree: true });
 
         this.svgElement().node.addEventListener("mousewheel", (ev: WheelEvent) => {
             if (ev.shiftKey) {
@@ -361,7 +398,7 @@ class Light extends Shape {
         var g = s.group();
 
         var circle = s.circle(0, 0, 1);
-        LIGHT_MATERIAL.apply(circle);
+        LIGHT_MATERIAL().apply(circle);
         g.add(circle);
 
 
@@ -378,11 +415,11 @@ class Light extends Shape {
 
             var p = mul(transformPoint(xAxis, mat), 5);
             var line = s.line(0, 0, p.x, p.y);
-            LIGHT_MATERIAL.apply(line);
+            LIGHT_MATERIAL().apply(line);
             g.add(line);
         }
 
-        LIGHT_MATERIAL.apply(g);
+        LIGHT_MATERIAL().apply(g);
 
         g.data("thing", this);
         return g;
@@ -577,18 +614,18 @@ class Camera extends Thing {
         var g = s.group();
 
         var el = s.path("M 0,0 20,15 A 40,40 1 0,0 20,-15 Z");
-        CAM_MATERIAL.apply(el);
+        CAM_MATERIAL().apply(el);
         g.add(el);
         var line = s.line(0, 0, 26, 20);
-        CAM_MATERIAL.apply(line);
+        CAM_MATERIAL().apply(line);
         g.add(line);
 
         var line = s.line(0, 0, 26, -20);
-        CAM_MATERIAL.apply(line);
+        CAM_MATERIAL().apply(line);
         g.add(line);
 
         var circle = s.ellipse(19, 0, 2, 4);
-        CAM_MATERIAL.apply(circle);
+        CAM_MATERIAL().apply(circle);
         g.add(circle);
 
 
@@ -619,18 +656,20 @@ class Path extends Thing {
             posArray.push(i.p.x, i.p.y);
 
             var normTarget = add(i.p, mul(i.n, 10));
-            var norm = s.line(i.p.x, i.p.y, normTarget.x, normTarget.y);
-            DEFAULT_MATERIAL.apply(norm);
-            g.add(norm);
+            //var norm = s.line(i.p.x, i.p.y, normTarget.x, normTarget.y);
+            //DEFAULT_MATERIAL().apply(norm);
+            //g.add(norm);
         }
 
         var line = s.polyline(posArray);
-        PATH_MATERIAL.apply(line);
+        PATH_MATERIAL().apply(line);
         g.add(line);
 
         g.data("thing", this);
 
         g.attr({ "z-index": -1 });
+
+        PATH_MATERIAL.subscribe(mat => { mat.apply(line); }, this);
         
         return g;
     }
@@ -640,8 +679,12 @@ interface Sampler {
     tracePath(ray: Ray, depth: number, scene: Scene): PathData[];
 }
 
+declare var HDR2D_BLEND_ADD : any;
 
 class Scene extends Shape {
+
+    renderPathDensity: KnockoutObservable<boolean>;
+
     shapes: KnockoutObservableArray<Shape>;
 
     paths: Path[];
@@ -652,8 +695,16 @@ class Scene extends Shape {
 
     sampler: Sampler;
 
+    canvas: CanvasRenderingContext2D;
+
+    renderedPathsCount: KnockoutObservable<number>;
+
+
     constructor(sampler : Sampler, s: Snap.Paper) {
         super(s);
+
+        this.renderedPathsCount = ko.observable<number>(0);
+        this.renderPathDensity = ko.observable<boolean>(false);
         this.sampler = sampler;
         this.shapes = ko.observableArray<Shape>([]);
         this.paths = [];
@@ -663,19 +714,11 @@ class Scene extends Shape {
 
         $(this.svgElement().node).off("mouswheel");
         s.undrag();
-        s.drag(this.onMove, null, this.onDragEnd, this, this, this);
 
         sampleDirFunc.subscribe((newVal) => this.recalculatePaths(), this);
-        
-        this.recalculatePaths();
-    }
 
-    onDragEnd(event: any) {
-        this.recalculatePaths();
-    }
-
-    onMove(dx: number, dy: number, x: number, y: number, event: any) {
-        this.recalculatePaths();
+        this.svgElement.subscribe((newVal) => this.recalculatePaths(), this);
+        this.renderPathDensity.subscribe((newVal) => this.recalculatePaths(), this);
     }
 
     recalculatePaths() {
@@ -685,30 +728,77 @@ class Scene extends Shape {
         }
 
         this.paths = [];
+        this.renderedPathsCount(0);
+        this.canvas.clearRect(0, 0, 10000, 10000);
 
-        for (var cam of this.cameras()) {
-            var fwd = cam.forward();
-            var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
-            var newPaths = this.sampler.tracePath(startRay, 3, this);
-            for (var p of newPaths) {
-                var path = new Path(p, this.paper);
-                this.paths.push(path);
+        if (this.renderPathDensity()) {
+
+            window.requestAnimationFrame(() => this.updateDensity());
+        } else {
+            for (var cam of this.cameras()) {
+                var fwd = cam.forward();
+                var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
+                var newPaths = this.sampler.tracePath(startRay, 3, this);
+                for (var p of newPaths) {
+                    var path = new Path(p, this.paper);
+                    this.paths.push(path);
+                }
             }
         }
 
     }
 
+
+    updateDensity() {
+        if (!this.renderPathDensity()) return;
+
+        this.canvas.globalCompositeOperation = "soft-light";
+
+        for (var cam of this.cameras()) {
+            var fwd = cam.forward();
+            var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
+
+            var renderPaths: PathData[] = [];
+
+            for (var i = 0; i < 10; i++) {
+                var newPaths = this.sampler.tracePath(startRay, 6, this);
+                for (var p of newPaths) {
+                    renderPaths.push(p);
+                }
+            }
+
+            this.renderedPathsCount(this.renderedPathsCount() + 10);
+
+            this.canvas.strokeStyle = PATH_MATERIAL().outlineColor().hex;
+
+            this.canvas.lineWidth = 0.4;
+            this.canvas.globalAlpha = 0.02;
+
+            for (var p of renderPaths) {
+                this.canvas.beginPath();
+                this.canvas.moveTo(p.points[0].p.x, p.points[0].p.y);
+                for (var point of p.points) {
+                    this.canvas.lineTo(point.p.x, point.p.y);
+                }
+                this.canvas.stroke();
+            }
+        }
+
+        if (this.renderedPathsCount() < 50000) {
+            window.requestAnimationFrame(() => this.updateDensity());
+        }
+    }
+
     addCamera(cam: Camera) {
         this.cameras.push(cam);
+        this.svgElement().add(cam.svgElement());
         cam.svgElement().drag();
-        this.recalculatePaths();
     }
 
     addShape(shape: Shape) {
         this.shapes.push(shape);
         this.svgElement().add(shape.svgElement());
         shape.svgElement().drag();
-        this.recalculatePaths();
     }
 
     intersect(ray: Ray, result: Intersection) {
@@ -868,15 +958,22 @@ window.onload = () => {
 
     var cam = new Camera(new Vec2(100, 100), 45, s);
 
-    CAM_MATERIAL.applyTo(cam);
+    CAM_MATERIAL().applyTo(cam);
 
     var pathSampler = new ScriptedPathSampler();
     pathSampler.sampleDir = sampleDirFunc;
     var scene = new Scene(pathSampler, s);
+    var canvas = <HTMLCanvasElement>document.getElementById("density");
+    var svgEl = document.getElementById("svg-container");
+    var width = $(svgEl).width();
+    var height = $(svgEl).height();
+    canvas.width = width;
+    canvas.height = height;
+    scene.canvas = <CanvasRenderingContext2D>canvas.getContext("2d");
 
     scene.addCamera(cam);
 
-    scene.addShape(new Circle(new Vec2(150, 150), 50, s));
+    scene.addShape(new Circle(new Vec2(250, 280), 50, s));
 
     scene.addShape(new Light(new Vec2(300, 200), 4, s));
 

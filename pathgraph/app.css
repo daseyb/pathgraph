@@ -83,15 +83,33 @@ body {
 #svg-wrapper {
     height: 400px;
     box-shadow: rgba(0, 0, 0, 0.4) 0px 0px 2px 2px;
+    position: relative;
 }
 
 #svg-container {
+    z-index: 1;
     align-items: center;
     display: flex;
     justify-content: center;
     align-self: center;
     width: 100%;
     height: 100%;
+    top: 0px;
+    left: 0px;
+    position: absolute; 
+}
+
+#density {
+    z-index: 0;
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    align-self: center;
+    width: 100%;
+    height: 100%;
+    top: 0px;
+    left: 0px;
+    position: absolute; 
 }
 
 #footer {
