@@ -121,7 +121,13 @@
             }
         });
 
-        editor.setValue(localStorage.getItem("sampleDirFunc"));
+        var savedData = localStorage.getItem("sampleDirFunc");
+
+        if (savedData == "") {
+            savedData = "return [reflect(ray.d, norm)]";
+        }
+
+        editor.setValue(savedData);
 
         if (sampleDirFunc) {
             try {
