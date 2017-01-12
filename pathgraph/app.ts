@@ -945,6 +945,8 @@ function makeRaySVG(s: Snap.Paper, r: Ray, length: number) {
 
 declare function unescape(s:string): string;
 
+var s: Snap.Paper;
+var scene: Scene;
 
 function toDataUrl(e: Snap.Element, maxWidth: number, maxHeight: number) {
     var bb = e.getBBox();
@@ -955,10 +957,14 @@ function toDataUrl(e: Snap.Element, maxWidth: number, maxHeight: number) {
     var w = Math.min(+ bb.width.toFixed(3), maxWidth) + x + 3;
     var h = Math.min(+ bb.height.toFixed(3), maxHeight) + y + 3;
 
-    var canvas = <HTMLCanvasElement>document.getElementById("density");
-    var imageStrg = canvas.toDataURL();
-    var img = s.image(imageStrg, 0, 0, maxWidth, maxHeight);
+    var img: Snap.Element;
 
+    if (scene.renderPathDensity()) {
+        var canvas = <HTMLCanvasElement>document.getElementById("density");
+        var imageStrg = canvas.toDataURL();
+        img = s.image(imageStrg, 0, 0, maxWidth, maxHeight);
+    }
+    
     var svg = Snap.format('<svg version="1.2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{width}" height="{height}" viewBox="{x} {y} {width} {height}">{contents}</svg>', {
         x: x,
         y: y,
@@ -967,12 +973,12 @@ function toDataUrl(e: Snap.Element, maxWidth: number, maxHeight: number) {
         contents: e.outerSVG()
     });
 
-    img.remove();
+    if(img) img.remove();
 
     return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
 }
 
-var s: Snap.Paper;
+
 
 window.onload = () => {
     s = Snap("#svg-container");
@@ -983,7 +989,7 @@ window.onload = () => {
 
     var pathSampler = new ScriptedPathSampler();
     pathSampler.sampleDir = sampleDirFunc;
-    var scene = new Scene(pathSampler, s);
+    scene = new Scene(pathSampler, s);
     var canvas = <HTMLCanvasElement>document.getElementById("density");
     var svgEl = document.getElementById("svg-container");
     var width = $(svgEl).width();

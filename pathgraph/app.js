@@ -739,15 +739,20 @@ function makeRaySVG(s, r, length) {
     var target = add(r.o, mul(r.d, length));
     return s.line(r.o.x, r.o.y, target.x, target.y);
 }
+var s;
+var scene;
 function toDataUrl(e, maxWidth, maxHeight) {
     var bb = e.getBBox();
     var x = Math.max(+bb.x.toFixed(3), 0) - 3;
     var y = Math.max(+bb.y.toFixed(3), 0) - 3;
     var w = Math.min(+bb.width.toFixed(3), maxWidth) + x + 3;
     var h = Math.min(+bb.height.toFixed(3), maxHeight) + y + 3;
-    var canvas = document.getElementById("density");
-    var imageStrg = canvas.toDataURL();
-    var img = s.image(imageStrg, 0, 0, maxWidth, maxHeight);
+    var img;
+    if (scene.renderPathDensity()) {
+        var canvas = document.getElementById("density");
+        var imageStrg = canvas.toDataURL();
+        img = s.image(imageStrg, 0, 0, maxWidth, maxHeight);
+    }
     var svg = Snap.format('<svg version="1.2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{width}" height="{height}" viewBox="{x} {y} {width} {height}">{contents}</svg>', {
         x: x,
         y: y,
@@ -755,17 +760,17 @@ function toDataUrl(e, maxWidth, maxHeight) {
         height: h,
         contents: e.outerSVG()
     });
-    img.remove();
+    if (img)
+        img.remove();
     return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
 }
-var s;
 window.onload = function () {
     s = Snap("#svg-container");
     var cam = new Camera(new Vec2(100, 100), 45, s);
     CAM_MATERIAL().applyTo(cam);
     var pathSampler = new ScriptedPathSampler();
     pathSampler.sampleDir = sampleDirFunc;
-    var scene = new Scene(pathSampler, s);
+    scene = new Scene(pathSampler, s);
     var canvas = document.getElementById("density");
     var svgEl = document.getElementById("svg-container");
     var width = $(svgEl).width();
