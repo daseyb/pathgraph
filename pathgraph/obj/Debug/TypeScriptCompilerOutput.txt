@@ -10,3 +10,5 @@ C:\dev\pathgraph\pathgraph\app.js
 C:\dev\pathgraph\pathgraph\app.js.map
 C:\dev\pathgraph\pathgraph\app.js
 C:\dev\pathgraph\pathgraph\app.js.map
+C:\dev\pathgraph\pathgraph\app.js
+C:\dev\pathgraph\pathgraph\app.js.map

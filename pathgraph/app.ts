@@ -59,6 +59,15 @@ function reflect(i: Vec2, n: Vec2) {
     return sub(i, mul(n, 2.0 * dot(n, i)));
 }
 
+function refract(i: Vec2, n: Vec2, eta: number) {
+    var NdotI = dot(n, i);
+    var k = 1.0 - eta * eta * (1.0 - NdotI * NdotI);
+    if (k < 0.0)
+        return new Vec2(0, 0);
+    else
+        return sub(mul(i, eta), mul(n, eta * NdotI + Math.sqrt(k) ));
+}
+
 function cross(a: Vec2, b: Vec2) {
     return a.x * b.y - a.y * b.x;
 }
@@ -656,6 +665,8 @@ class Scene extends Shape {
         s.undrag();
         s.drag(this.onMove, null, this.onDragEnd, this, this, this);
 
+        sampleDirFunc.subscribe((newVal) => this.recalculatePaths(), this);
+        
         this.recalculatePaths();
     }
 
@@ -678,7 +689,7 @@ class Scene extends Shape {
         for (var cam of this.cameras()) {
             var fwd = cam.forward();
             var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
-            var newPaths = this.sampler.tracePath(startRay, 10, this);
+            var newPaths = this.sampler.tracePath(startRay, 3, this);
             for (var p of newPaths) {
                 var path = new Path(p, this.paper);
                 this.paths.push(path);
@@ -763,6 +774,68 @@ class SinglePathSampler implements Sampler {
 }
 
 
+var sampleDirFunc: KnockoutObservable<(intersect: Intersection, ray: Ray) => Vec2[]> = ko.observable<(intersect: Intersection, ray: Ray) => Vec2[]>();
+
+class ScriptedPathSampler implements Sampler {
+
+    sampleDir: KnockoutObservable<(intersect: Intersection, ray: Ray) => Vec2[]>;
+
+    tracePath(ray: Ray, depth: number, scene: Scene): PathData[] {
+
+        if (depth < 0) return;
+
+        var sampleDir = this.sampleDir();
+
+        if (!sampleDir) {
+            return [];
+        }
+
+        var path: PathData = new PathData();
+        var result: PathData[] = [];
+        result.push(path);
+
+        path.points = [];
+        path.points.push({ p: ray.o, n: ray.d, shape: null });
+
+        var intersect: Intersection = new Intersection();
+
+        if (!scene.intersect(ray, intersect)) {
+            path.points.push({ p: add(ray.o, mul(ray.d, 20000)), n: ray.d, shape: null });
+            return result;
+        }
+
+        path.points.push(intersect);
+        
+
+        if (intersect.shape instanceof Light) {
+            return result;
+        }
+
+        try {
+            var dirs = sampleDir(intersect, ray);
+
+            for (var dir of dirs) {
+                var r: Ray = {
+                    o: add(intersect.p, mul(dir, 1)),
+                    d: dir
+                };
+
+                var newPaths = this.tracePath(r, depth - 1, scene);
+                for (var newPath of newPaths) {
+                    result.push(newPath);
+                }
+            }
+
+        } catch (runtimeError) {
+            $("#code-footer").text(runtimeError.name + "-" + runtimeError.message);
+            return result;
+        }
+
+        return result;
+    }
+}
+
+
 
 function makeRaySVG(s: Snap.Paper, r: Ray, length: number) {
     var target = add(r.o, mul(r.d, length));
@@ -797,7 +870,9 @@ window.onload = () => {
 
     CAM_MATERIAL.applyTo(cam);
 
-    var scene = new Scene(new SinglePathSampler(), s);
+    var pathSampler = new ScriptedPathSampler();
+    pathSampler.sampleDir = sampleDirFunc;
+    var scene = new Scene(pathSampler, s);
 
     scene.addCamera(cam);
 

@@ -49,6 +49,14 @@ function reflect(i, n) {
     i = mul(i, 1);
     return sub(i, mul(n, 2.0 * dot(n, i)));
 }
+function refract(i, n, eta) {
+    var NdotI = dot(n, i);
+    var k = 1.0 - eta * eta * (1.0 - NdotI * NdotI);
+    if (k < 0.0)
+        return new Vec2(0, 0);
+    else
+        return sub(mul(i, eta), mul(n, eta * NdotI + Math.sqrt(k)));
+}
 function cross(a, b) {
     return a.x * b.y - a.y * b.x;
 }
@@ -519,6 +527,7 @@ var Scene = (function (_super) {
         $(_this.svgElement().node).off("mouswheel");
         s.undrag();
         s.drag(_this.onMove, null, _this.onDragEnd, _this, _this, _this);
+        sampleDirFunc.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
         _this.recalculatePaths();
         return _this;
     }
@@ -538,7 +547,7 @@ var Scene = (function (_super) {
             var cam = _c[_b];
             var fwd = cam.forward();
             var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
-            var newPaths = this.sampler.tracePath(startRay, 10, this);
+            var newPaths = this.sampler.tracePath(startRay, 3, this);
             for (var _d = 0, newPaths_1 = newPaths; _d < newPaths_1.length; _d++) {
                 var p = newPaths_1[_d];
                 var path = new Path(p, this.paper);
@@ -609,6 +618,54 @@ var SinglePathSampler = (function () {
     };
     return SinglePathSampler;
 }());
+var sampleDirFunc = ko.observable();
+var ScriptedPathSampler = (function () {
+    function ScriptedPathSampler() {
+    }
+    ScriptedPathSampler.prototype.tracePath = function (ray, depth, scene) {
+        if (depth < 0)
+            return;
+        var sampleDir = this.sampleDir();
+        if (!sampleDir) {
+            return [];
+        }
+        var path = new PathData();
+        var result = [];
+        result.push(path);
+        path.points = [];
+        path.points.push({ p: ray.o, n: ray.d, shape: null });
+        var intersect = new Intersection();
+        if (!scene.intersect(ray, intersect)) {
+            path.points.push({ p: add(ray.o, mul(ray.d, 20000)), n: ray.d, shape: null });
+            return result;
+        }
+        path.points.push(intersect);
+        if (intersect.shape instanceof Light) {
+            return result;
+        }
+        try {
+            var dirs = sampleDir(intersect, ray);
+            for (var _i = 0, dirs_1 = dirs; _i < dirs_1.length; _i++) {
+                var dir = dirs_1[_i];
+                var r = {
+                    o: add(intersect.p, mul(dir, 1)),
+                    d: dir
+                };
+                var newPaths = this.tracePath(r, depth - 1, scene);
+                for (var _a = 0, newPaths_2 = newPaths; _a < newPaths_2.length; _a++) {
+                    var newPath = newPaths_2[_a];
+                    result.push(newPath);
+                }
+            }
+        }
+        catch (runtimeError) {
+            $("#code-footer").text(runtimeError.name + "-" + runtimeError.message);
+            return result;
+        }
+        return result;
+    };
+    return ScriptedPathSampler;
+}());
 function makeRaySVG(s, r, length) {
     var target = add(r.o, mul(r.d, length));
     return s.line(r.o.x, r.o.y, target.x, target.y);
@@ -631,7 +688,9 @@ window.onload = function () {
     s = Snap("#svg-container");
     var cam = new Camera(new Vec2(100, 100), 45, s);
     CAM_MATERIAL.applyTo(cam);
-    var scene = new Scene(new SinglePathSampler(), s);
+    var pathSampler = new ScriptedPathSampler();
+    pathSampler.sampleDir = sampleDirFunc;
+    var scene = new Scene(pathSampler, s);
     scene.addCamera(cam);
     scene.addShape(new Circle(new Vec2(150, 150), 50, s));
     scene.addShape(new Light(new Vec2(300, 200), 4, s));
