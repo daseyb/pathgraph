@@ -124,7 +124,7 @@
         var savedData = localStorage.getItem("sampleDirFunc");
 
         if (savedData == "") {
-            savedData = "return [reflect(ray.d, norm)]";
+            savedData = "return [reflect(ray.d, intersect.n)]";
         }
 
         editor.setValue(savedData);
