@@ -12,6 +12,7 @@ var COLOR_INFO = ko.observable(Snap.getRGB("#3498DB"));
 var COLOR_WARNING = ko.observable(Snap.getRGB("#F39C12"));
 var COLOR_DANGER = ko.observable(Snap.getRGB("#E74C3C"));
 var BACKGROUND_COLOR = ko.observable(Snap.getRGB("rgb(200, 200, 200)"));
+var CAM_BACKGROUND_COLOR = ko.observable(Snap.getRGB("rgb(255, 255, 255)"));
 var CAM_OUTLINE = COLOR_PRIMARY; // ko.observable<Snap.RGB>(Snap.getRGB("rgb(60, 60, 60)"));
 var Vec2 = (function () {
     function Vec2(x, y) {
@@ -171,7 +172,7 @@ var Material = (function () {
     return Material;
 }());
 var DEFAULT_MATERIAL = ko.observable(new Material(COLOR_DANGER, BACKGROUND_COLOR, 1.0, 0.25, 2));
-var CAM_MATERIAL = ko.observable(new Material(CAM_OUTLINE, BACKGROUND_COLOR, 1.0, 0.25, 2));
+var CAM_MATERIAL = ko.observable(new Material(CAM_OUTLINE, CAM_BACKGROUND_COLOR, 1.0, 0.75, 2));
 var PATH_MATERIAL = ko.observable(new Material(COLOR_SUCCESS, BACKGROUND_COLOR, 1.0, 0.0, 2));
 var LIGHT_MATERIAL = ko.observable(new Material(COLOR_WARNING, BACKGROUND_COLOR, 1.0, 0.25, 0.5));
 var Thing = (function () {
@@ -637,6 +638,19 @@ var Scene = (function (_super) {
         if (this.renderedPathsCount() < 50000) {
             window.requestAnimationFrame(function () { return _this.updateDensity(); });
         }
+    };
+    Scene.prototype.removeThing = function (thing) {
+        if (thing instanceof Camera) {
+            this.cameras.remove(thing);
+        }
+        else if (thing instanceof Shape) {
+            this.shapes.remove(thing);
+        }
+        if (thing instanceof Light) {
+            this.lights.remove(thing);
+        }
+        thing.svgElement().remove();
+        this.recalculatePaths();
     };
     Scene.prototype.addCamera = function (cam) {
         this.cameras.push(cam);

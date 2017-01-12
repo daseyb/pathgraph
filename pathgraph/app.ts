@@ -9,6 +9,7 @@ var COLOR_WARNING = ko.observable<Snap.RGB>(Snap.getRGB("#F39C12"));
 var COLOR_DANGER = ko.observable<Snap.RGB>(Snap.getRGB("#E74C3C"));
 
 var BACKGROUND_COLOR = ko.observable<Snap.RGB>(Snap.getRGB("rgb(200, 200, 200)"));
+var CAM_BACKGROUND_COLOR = ko.observable<Snap.RGB>(Snap.getRGB("rgb(255, 255, 255)"));
 var CAM_OUTLINE = COLOR_PRIMARY;// ko.observable<Snap.RGB>(Snap.getRGB("rgb(60, 60, 60)"));
 
 class Vec2 {
@@ -224,7 +225,7 @@ class Material {
 
 
 var DEFAULT_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(COLOR_DANGER, BACKGROUND_COLOR, 1.0, 0.25, 2));
-var CAM_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(CAM_OUTLINE, BACKGROUND_COLOR, 1.0, 0.25, 2));
+var CAM_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(CAM_OUTLINE, CAM_BACKGROUND_COLOR, 1.0, 0.75, 2));
 var PATH_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(COLOR_SUCCESS, BACKGROUND_COLOR, 1.0, 0.0, 2));
 var LIGHT_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(COLOR_WARNING, BACKGROUND_COLOR, 1.0, 0.25, 0.5));
 
@@ -837,6 +838,21 @@ class Scene extends Shape {
         if (this.renderedPathsCount() < 50000) {
             window.requestAnimationFrame(() => this.updateDensity());
         }
+    }
+
+    removeThing(thing: Thing) {
+        if (thing instanceof Camera) {
+            this.cameras.remove(<Camera>thing);
+        } else if (thing instanceof Shape) {
+            this.shapes.remove(<Shape>thing);
+        } 
+
+        if (thing instanceof Light) {
+            this.lights.remove(<Light>thing);
+        }
+
+        thing.svgElement().remove();
+        this.recalculatePaths();
     }
 
     addCamera(cam: Camera) {

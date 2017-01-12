@@ -37,27 +37,94 @@
                     <div class="panel-heading">
                         <h2 class="panel-title"><a data-toggle="collapse" href="#objects-body">Objects</a></h2>
                     </div>
+
+                    <div class="panel-body">
+                        <div class="btn-group">
+                            <button type="button" class="btn btn-primary dropdown-toggle" data-toggle="dropdown" aria-haspopup="true" aria-expanded="false">
+                                Create <span class="caret"></span>
+                            </button>
+                            <ul class="dropdown-menu">
+                                <li><a href="#" data-bind="click: function(d, e) { addShape(new Box(new Vec2(100, 100), new Vec2(30, 30), s)); }">Box</a></li>
+                                <li><a href="#" data-bind="click: function(d, e) {addShape(new Circle(new Vec2(100, 100), 30, s)); }">Circle</a></li>
+                                <li role="separator" class="divider"></li>
+                                <li><a href="#"data-bind="click: function(d, e) {addCamera(new Camera(new Vec2(100, 100), 0, s)); }">Camera</a></li>
+                            </ul>
+                        </div>
+                    </div>
+
                     <div id="objects-body" class="panel-collapse collapse scroll-panel">
                         <table class="table table-striped">
                             <thead>
                                 <tr>
+                                    <th></th>
+                                    <th>Type</th>
                                     <th>Position</th>
                                     <th>Scale</th>
                                     <th>Rotation</th>
                                 </tr>
                             </thead>
                             <!-- Todo: Generate table body -->
-                            <tbody data-bind="foreach: shapes">
+                            <tbody data-bind="foreach: cameras">
                                 <tr>
+                                    <td>
+                                        <button type="button" data-bind="click: $parent.removeThing.bind($parent)" class="btn btn-danger btn-sm" aria-label="Left Align">
+                                            <span class="glyphicon glyphicon-trash" aria-hidden="true"></span>
+                                        </button>
+                                    </td>
+                                    <td>
+                                        <p>Camera</p>
+                                    </td>
                                     <td data-bind="text: pos()"></td>
                                     <td data-bind="text: scale()"></td>
-                                    <td data-bind="text: rot()"></td>
+                                    <td><input data-bind="value: rot" /></td>
+                                </tr>
+                            </tbody>
+
+                            <tbody data-bind="foreach: shapes">
+                                <tr>
+                                    <td>
+                                        <button type="button" data-bind="click: $parent.removeThing.bind($parent)"" class="btn btn-danger btn-sm" aria-label="Left Align">
+                                            <span class="glyphicon glyphicon-trash" aria-hidden="true"></span>
+                                        </button>
+                                    </td>
+                                    <td>
+                                        <p>Shape</p>
+                                    </td>
+                                    <td data-bind="text: pos()"></td>
+                                    <td data-bind="text: scale()"></td>
+                                    <td><input data-bind="value: rot" /></td>
+                                </tr>
+                            </tbody>
+
+                            <tbody data-bind="foreach: lights">
+                                <tr>
+                                    <td>
+                                        <button type="button" data-bind="click: $parent.removeThing.bind($parent)"" class="btn btn-danger btn-sm" aria-label="Left Align">
+                                            <span class="glyphicon glyphicon-trash" aria-hidden="true"></span>
+                                        </button>
+                                    </td>
+                                    <td>
+                                        <p>Light</p>
+                                    </td>
+                                    <td data-bind="text: pos()"></td>
+                                    <td data-bind="text: scale()"></td>
+                                    <td><input data-bind="value: rot" /></td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
                 </div>
 
+
+            </div>
+            <div id="workspace-center">
+                <div id="svg-wrapper">
+                    <canvas id="density"></canvas>
+                    <svg id="svg-container" />
+                </div>
+                <br />
+                <a target="_blank" onmousedown="saveSvg()" id="save-button" href="#" class="btn btn-default btn-lg btn-block">Save as SVG</a>
+                <br />
                 <div class="panel panel-info">
                     <div class="panel-heading">
                         <h2 class="panel-title"><a data-toggle="collapse" href="#code-body">Intersection Code</a></h2>
@@ -70,14 +137,6 @@
                     </div>
                     <div id="code-footer" class="panel-footer"></div>
                 </div>
-            </div>
-            <div id="workspace-center">
-                <div id="svg-wrapper">
-                    <canvas id="density"></canvas>
-                    <svg id="svg-container" />
-                </div>
-                <br />
-                <a target="_blank" onmousedown="saveSvg()" id="save-button" href="#" class="btn btn-default btn-lg btn-block">Save as SVG</a>
             </div>
             <div id="workspace-right">
 
