@@ -114,24 +114,26 @@
                 var intersectFunc = new Function("intersect", "ray", editor.getValue());
                 sampleDirFunc(intersectFunc);
                 $("#code-footer").text("No Errors");
-
+                localStorage.setItem("sampleDirFunc", editor.getValue());
             }
             catch (syntaxError) {
                 $("#code-footer").text(syntaxError.name + "-" + syntaxError.message);
             }
         });
 
+        editor.setValue(localStorage.getItem("sampleDirFunc"));
+
         if (sampleDirFunc) {
             try {
                 var intersectFunc = new Function("intersect", "ray", editor.getValue());
                 sampleDirFunc(intersectFunc);
                 $("#code-footer").text("No Errors");
-
             }
             catch (syntaxError) {
                 $("#code-footer").text(syntaxError.name + "-" + syntaxError.message);
             }
         }
+
     </script>
 
     <script>

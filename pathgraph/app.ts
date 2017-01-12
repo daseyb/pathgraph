@@ -760,8 +760,8 @@ class Scene extends Shape {
 
             var renderPaths: PathData[] = [];
 
-            for (var i = 0; i < 10; i++) {
-                var newPaths = this.sampler.tracePath(startRay, 6, this);
+            for (var i = 0; i < 4; i++) {
+                var newPaths = this.sampler.tracePath(startRay, 4, this);
                 for (var p of newPaths) {
                     renderPaths.push(p);
                 }
@@ -872,7 +872,7 @@ class ScriptedPathSampler implements Sampler {
 
     tracePath(ray: Ray, depth: number, scene: Scene): PathData[] {
 
-        if (depth < 0) return;
+        if (depth < 0) return [];
 
         var sampleDir = this.sampleDir();
 
@@ -901,24 +901,35 @@ class ScriptedPathSampler implements Sampler {
             return result;
         }
 
+        var dirs: Vec2[];
+
         try {
-            var dirs = sampleDir(intersect, ray);
+            dirs = sampleDir(intersect, ray);
+        } catch (runtimeError) {
+            $("#code-footer").text("Sample Error:" + runtimeError.name + "-" + runtimeError.message);
+            return result;
+        }
 
-            for (var dir of dirs) {
-                var r: Ray = {
-                    o: add(intersect.p, mul(dir, 1)),
-                    d: dir
-                };
+        
+        for (var dir of dirs) {
+            var r: Ray = {
+                o: add(intersect.p, mul(dir, 1)),
+                d: dir
+            };
 
-                var newPaths = this.tracePath(r, depth - 1, scene);
-                for (var newPath of newPaths) {
-                    result.push(newPath);
-                }
+            var newPaths: PathData[];
+
+            try {
+                newPaths = this.tracePath(r, depth - 1, scene);
+            } catch (runtimeError) {
+                $("#code-footer").text("Trace Path Error:" + runtimeError.name + "-" + runtimeError.message);
+
+                return result;
             }
 
-        } catch (runtimeError) {
-            $("#code-footer").text(runtimeError.name + "-" + runtimeError.message);
-            return result;
+            for (var newPath of newPaths) {
+                result.push(newPath);
+            }
         }
 
         return result;
@@ -938,16 +949,26 @@ declare function unescape(s:string): string;
 function toDataUrl(e: Snap.Element, maxWidth: number, maxHeight: number) {
     var bb = e.getBBox();
 
-    var x = Math.max(+bb.x.toFixed(3), 0);
-    var y = Math.max(+ bb.y.toFixed(3), 0);
+    var x = Math.max(+bb.x.toFixed(3), 0) - 3;
+    var y = Math.max(+ bb.y.toFixed(3), 0) - 3;
+
+    var w = Math.min(+ bb.width.toFixed(3), maxWidth) + x + 3;
+    var h = Math.min(+ bb.height.toFixed(3), maxHeight) + y + 3;
+
+    var canvas = <HTMLCanvasElement>document.getElementById("density");
+    var imageStrg = canvas.toDataURL();
+    var img = s.image(imageStrg, 0, 0, maxWidth, maxHeight);
 
     var svg = Snap.format('<svg version="1.2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{width}" height="{height}" viewBox="{x} {y} {width} {height}">{contents}</svg>', {
-        x: x-3,
-        y: y-3,
-        width: Math.min(+ bb.width.toFixed(3), maxWidth) + x +3,
-        height: Math.min(+ bb.height.toFixed(3), maxHeight) + y+3,
+        x: x,
+        y: y,
+        width: w,
+        height: h,
         contents: e.outerSVG()
     });
+
+    img.remove();
+
     return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
 }
 
@@ -967,9 +988,20 @@ window.onload = () => {
     var svgEl = document.getElementById("svg-container");
     var width = $(svgEl).width();
     var height = $(svgEl).height();
+
+    window.addEventListener("resize", () => {
+        canvas.width = $(svgEl).width();
+        canvas.height = $(svgEl).height();
+        scene.recalculatePaths();
+    }, true);
+
+    var svgEl = document.getElementById("svg-container");
+    var width = $(svgEl).width();
+    var height = $(svgEl).height();
     canvas.width = width;
     canvas.height = height;
     scene.canvas = <CanvasRenderingContext2D>canvas.getContext("2d");
+
 
     scene.addCamera(cam);
 
@@ -1014,8 +1046,7 @@ function saveSvg() {
     var width = $(svgEl).width();
     var height = $(svgEl).height();
 
-    console.log(width);
-    console.log(height);
+
     var saveButton = document.getElementById("save-button");
     saveButton.setAttribute("href", toDataUrl(s, width, height));
 }

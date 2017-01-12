@@ -591,8 +591,8 @@ var Scene = (function (_super) {
             var fwd = cam.forward();
             var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
             var renderPaths = [];
-            for (var i = 0; i < 10; i++) {
-                var newPaths = this.sampler.tracePath(startRay, 6, this);
+            for (var i = 0; i < 4; i++) {
+                var newPaths = this.sampler.tracePath(startRay, 4, this);
                 for (var _b = 0, newPaths_2 = newPaths; _b < newPaths_2.length; _b++) {
                     var p = newPaths_2[_b];
                     renderPaths.push(p);
@@ -685,7 +685,7 @@ var ScriptedPathSampler = (function () {
     }
     ScriptedPathSampler.prototype.tracePath = function (ray, depth, scene) {
         if (depth < 0)
-            return;
+            return [];
         var sampleDir = this.sampleDir();
         if (!sampleDir) {
             return [];
@@ -704,24 +704,32 @@ var ScriptedPathSampler = (function () {
         if (intersect.shape instanceof Light) {
             return result;
         }
+        var dirs;
         try {
-            var dirs = sampleDir(intersect, ray);
-            for (var _i = 0, dirs_1 = dirs; _i < dirs_1.length; _i++) {
-                var dir = dirs_1[_i];
-                var r = {
-                    o: add(intersect.p, mul(dir, 1)),
-                    d: dir
-                };
-                var newPaths = this.tracePath(r, depth - 1, scene);
-                for (var _a = 0, newPaths_3 = newPaths; _a < newPaths_3.length; _a++) {
-                    var newPath = newPaths_3[_a];
-                    result.push(newPath);
-                }
-            }
+            dirs = sampleDir(intersect, ray);
         }
         catch (runtimeError) {
-            $("#code-footer").text(runtimeError.name + "-" + runtimeError.message);
+            $("#code-footer").text("Sample Error:" + runtimeError.name + "-" + runtimeError.message);
             return result;
+        }
+        for (var _i = 0, dirs_1 = dirs; _i < dirs_1.length; _i++) {
+            var dir = dirs_1[_i];
+            var r = {
+                o: add(intersect.p, mul(dir, 1)),
+                d: dir
+            };
+            var newPaths;
+            try {
+                newPaths = this.tracePath(r, depth - 1, scene);
+            }
+            catch (runtimeError) {
+                $("#code-footer").text("Trace Path Error:" + runtimeError.name + "-" + runtimeError.message);
+                return result;
+            }
+            for (var _a = 0, newPaths_3 = newPaths; _a < newPaths_3.length; _a++) {
+                var newPath = newPaths_3[_a];
+                result.push(newPath);
+            }
         }
         return result;
     };
@@ -733,15 +741,21 @@ function makeRaySVG(s, r, length) {
 }
 function toDataUrl(e, maxWidth, maxHeight) {
     var bb = e.getBBox();
-    var x = Math.max(+bb.x.toFixed(3), 0);
-    var y = Math.max(+bb.y.toFixed(3), 0);
+    var x = Math.max(+bb.x.toFixed(3), 0) - 3;
+    var y = Math.max(+bb.y.toFixed(3), 0) - 3;
+    var w = Math.min(+bb.width.toFixed(3), maxWidth) + x + 3;
+    var h = Math.min(+bb.height.toFixed(3), maxHeight) + y + 3;
+    var canvas = document.getElementById("density");
+    var imageStrg = canvas.toDataURL();
+    var img = s.image(imageStrg, 0, 0, maxWidth, maxHeight);
     var svg = Snap.format('<svg version="1.2" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="{width}" height="{height}" viewBox="{x} {y} {width} {height}">{contents}</svg>', {
-        x: x - 3,
-        y: y - 3,
-        width: Math.min(+bb.width.toFixed(3), maxWidth) + x + 3,
-        height: Math.min(+bb.height.toFixed(3), maxHeight) + y + 3,
+        x: x,
+        y: y,
+        width: w,
+        height: h,
         contents: e.outerSVG()
     });
+    img.remove();
     return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
 }
 var s;
@@ -753,6 +767,14 @@ window.onload = function () {
     pathSampler.sampleDir = sampleDirFunc;
     var scene = new Scene(pathSampler, s);
     var canvas = document.getElementById("density");
+    var svgEl = document.getElementById("svg-container");
+    var width = $(svgEl).width();
+    var height = $(svgEl).height();
+    window.addEventListener("resize", function () {
+        canvas.width = $(svgEl).width();
+        canvas.height = $(svgEl).height();
+        scene.recalculatePaths();
+    }, true);
     var svgEl = document.getElementById("svg-container");
     var width = $(svgEl).width();
     var height = $(svgEl).height();
@@ -786,8 +808,6 @@ function saveSvg() {
     var svgEl = document.getElementById("svg-container");
     var width = $(svgEl).width();
     var height = $(svgEl).height();
-    console.log(width);
-    console.log(height);
     var saveButton = document.getElementById("save-button");
     saveButton.setAttribute("href", toDataUrl(s, width, height));
 }
