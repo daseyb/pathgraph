@@ -110,6 +110,12 @@ function cosineSampleHemisphere(n: Vec2) {
     return add(mul(xDir, x),  mul(n,y));
 }
 
+function sampleCircle(pos: Vec2, rad: number) {
+    var angle = Math.random() * 2 * Math.PI;
+    var dir = new Vec2(Math.sin(angle), Math.cos(angle));
+
+    return add(pos, mul(dir, rad));
+}
 
 class Ray {
     o: Vec2;
@@ -348,8 +354,12 @@ class Shape extends Thing {
 
     intersect(ray: Ray, result: Intersection): boolean { return false }
 
-
+    sampleShape(): Vec2 {
+        return this.pos();
+    }
 }
+
+
 
 class Light extends Shape {
     constructor(pos: Vec2, rad: number, s: Snap.Paper) {
@@ -424,6 +434,10 @@ class Light extends Shape {
         g.data("thing", this);
         return g;
     }
+
+    sampleShape() {
+        return sampleCircle(this.pos(), this.scale().x);
+    }
 }
 
 
@@ -474,6 +488,10 @@ class Circle extends Shape {
         var el = s.circle(0, 0, 1);
         el.data("thing", this);
         return el;
+    }
+
+    sampleShape() {
+        return sampleCircle(this.pos(), this.scale().x);
     }
 }
 
@@ -530,6 +548,7 @@ class Box extends Shape {
 
         return el;
     }
+
 }
 
 class Polygon extends Shape {
@@ -634,8 +653,27 @@ class Camera extends Thing {
     }
 }
 
+interface Set<T> {
+    add(value: T): Set<T>;
+    clear(): void;
+    delete(value: T): boolean;
+    entries(): Array<[T, T]>;
+    forEach(callbackfn: (value: T, index: T, set: Set<T>) => void, thisArg?: any): void;
+    has(value: T): boolean;
+    keys(): Array<T>;
+    size: number;
+}
+
+interface SetConstructor {
+    new <T>(): Set<T>;
+    new <T>(iterable: Array<T>): Set<T>;
+    prototype: Set<any>;
+}
+declare var Set: SetConstructor;
+
 class PathData {
     points: Intersection[];
+    properties: Set<string>;
 }
 
 class Path extends Thing {
@@ -699,6 +737,8 @@ class Scene extends Shape {
 
     renderedPathsCount: KnockoutObservable<number>;
 
+    lights: KnockoutObservableArray<Shape>;
+
 
     constructor(sampler : Sampler, s: Snap.Paper) {
         super(s);
@@ -707,6 +747,7 @@ class Scene extends Shape {
         this.renderPathDensity = ko.observable<boolean>(false);
         this.sampler = sampler;
         this.shapes = ko.observableArray<Shape>([]);
+        this.lights = ko.observableArray<Shape>([]);
         this.paths = [];
         this.cameras = ko.observableArray<Camera>([]);
         this.materials = ko.observableArray<Material>([]);
@@ -719,6 +760,13 @@ class Scene extends Shape {
 
         this.svgElement.subscribe((newVal) => this.recalculatePaths(), this);
         this.renderPathDensity.subscribe((newVal) => this.recalculatePaths(), this);
+    }
+
+    sampleLight() {
+        var lightIndex = Math.floor(this.lights().length * Math.random());
+
+        var light = this.lights()[lightIndex];
+        return light.sampleShape();
     }
 
     recalculatePaths() {
@@ -775,6 +823,8 @@ class Scene extends Shape {
             this.canvas.globalAlpha = 0.02;
 
             for (var p of renderPaths) {
+                this.canvas.strokeStyle = p.properties.has("HitLight") ? COLOR_WARNING().hex : COLOR_INFO().hex;
+
                 this.canvas.beginPath();
                 this.canvas.moveTo(p.points[0].p.x, p.points[0].p.y);
                 for (var point of p.points) {
@@ -797,6 +847,7 @@ class Scene extends Shape {
 
     addShape(shape: Shape) {
         this.shapes.push(shape);
+        if (shape instanceof Light) this.lights.push(shape);
         this.svgElement().add(shape.svgElement());
         shape.svgElement().drag();
     }
@@ -821,6 +872,21 @@ class Scene extends Shape {
         return hitSomething;
     }
 
+    test(a: Vec2, b: Vec2) {
+        var r: Ray = {
+            o: a, d: normalize(sub(b, a))
+        };
+
+        var res: Intersection = new Intersection();
+        if (!this.intersect(r, res)) {
+            return false;
+        }
+
+        var dist = vlength(sub(res.p, b));
+        if (dist > 2) return false;
+        return true;
+    }
+
     makeSvg(s: Snap.Paper) {
         var elements: Snap.Element[] = [];
         var group = s.group();
@@ -835,6 +901,7 @@ class SinglePathSampler implements Sampler {
     tracePath(ray: Ray, depth: number, scene: Scene): PathData[] {
         var path: PathData = new PathData();
         path.points = [];
+        path.properties = new Set<string>();
 
         path.points.push({ p: ray.o, n: ray.d, shape: null});
 
@@ -849,6 +916,7 @@ class SinglePathSampler implements Sampler {
             path.points.push(intersect);
 
             if (intersect.shape instanceof Light) {
+                path.properties.add("HitLight");
                 break;
             }
 
@@ -864,11 +932,11 @@ class SinglePathSampler implements Sampler {
 }
 
 
-var sampleDirFunc = ko.observable<(intersect: Intersection, ray: Ray) => Vec2[]>();
+var sampleDirFunc = ko.observable<(intersect: Intersection, ray: Ray, scene: Scene) => Vec2[]>();
 
 class ScriptedPathSampler implements Sampler {
 
-    sampleDir: KnockoutObservable<(intersect: Intersection, ray: Ray) => Vec2[]>;
+    sampleDir: KnockoutObservable<(intersect: Intersection, ray: Ray, scene: Scene) => Vec2[]>;
 
     tracePath(ray: Ray, depth: number, scene: Scene): PathData[] {
 
@@ -884,6 +952,8 @@ class ScriptedPathSampler implements Sampler {
         var result: PathData[] = [];
         result.push(path);
 
+        path.properties = new Set<string>();
+
         path.points = [];
         path.points.push({ p: ray.o, n: ray.d, shape: null });
 
@@ -898,13 +968,14 @@ class ScriptedPathSampler implements Sampler {
         
 
         if (intersect.shape instanceof Light) {
+            path.properties.add("HitLight");
             return result;
         }
 
         var dirs: Vec2[];
 
         try {
-            dirs = sampleDir(intersect, ray);
+            dirs = sampleDir(intersect, ray, scene);
         } catch (runtimeError) {
             $("#code-footer").text("Sample Error:" + runtimeError.name + "-" + runtimeError.message);
             return result;
@@ -928,6 +999,10 @@ class ScriptedPathSampler implements Sampler {
             }
 
             for (var newPath of newPaths) {
+                newPath.properties.forEach((value, index, set) => {
+                    path.properties.add(value);
+                }, this);
+
                 result.push(newPath);
             }
         }
@@ -935,7 +1010,6 @@ class ScriptedPathSampler implements Sampler {
         return result;
     }
 }
-
 
 
 function makeRaySVG(s: Snap.Paper, r: Ray, length: number) {

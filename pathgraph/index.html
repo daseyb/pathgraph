@@ -63,7 +63,7 @@
                         <h2 class="panel-title"><a data-toggle="collapse" href="#code-body">Intersection Code</a></h2>
                     </div>
                     <div class="panel-body">
-                        <code>function sampleDir(intersect, ray) => [Vec2]</code>
+                        <code>function sampleDir(intersect, ray, scene) => [Vec2]</code>
                     </div>
                     <div id="code-body" class="panel-collapse collapse scroll-panel">
                         <div id="editor">return [cosineSampleHemisphere(intersect.n)];</div>
@@ -111,7 +111,7 @@
             if (!sampleDirFunc) return;
 
             try {
-                var intersectFunc = new Function("intersect", "ray", editor.getValue());
+                var intersectFunc = new Function("intersect", "ray", "scene", editor.getValue());
                 sampleDirFunc(intersectFunc);
                 $("#code-footer").text("No Errors");
                 localStorage.setItem("sampleDirFunc", editor.getValue());

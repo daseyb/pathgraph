@@ -86,6 +86,11 @@ function cosineSampleHemisphere(n) {
     var xDir = perp(n);
     return add(mul(xDir, x), mul(n, y));
 }
+function sampleCircle(pos, rad) {
+    var angle = Math.random() * 2 * Math.PI;
+    var dir = new Vec2(Math.sin(angle), Math.cos(angle));
+    return add(pos, mul(dir, rad));
+}
 var Ray = (function () {
     function Ray(o, d) {
         this.o = o;
@@ -268,6 +273,9 @@ var Shape = (function (_super) {
         return _super.call(this, s) || this;
     }
     Shape.prototype.intersect = function (ray, result) { return false; };
+    Shape.prototype.sampleShape = function () {
+        return this.pos();
+    };
     return Shape;
 }(Thing));
 var Light = (function (_super) {
@@ -327,6 +335,9 @@ var Light = (function (_super) {
         g.data("thing", this);
         return g;
     };
+    Light.prototype.sampleShape = function () {
+        return sampleCircle(this.pos(), this.scale().x);
+    };
     return Light;
 }(Shape));
 var Circle = (function (_super) {
@@ -370,6 +381,9 @@ var Circle = (function (_super) {
         var el = s.circle(0, 0, 1);
         el.data("thing", this);
         return el;
+    };
+    Circle.prototype.sampleShape = function () {
+        return sampleCircle(this.pos(), this.scale().x);
     };
     return Circle;
 }(Shape));
@@ -544,6 +558,7 @@ var Scene = (function (_super) {
         _this.renderPathDensity = ko.observable(false);
         _this.sampler = sampler;
         _this.shapes = ko.observableArray([]);
+        _this.lights = ko.observableArray([]);
         _this.paths = [];
         _this.cameras = ko.observableArray([]);
         _this.materials = ko.observableArray([]);
@@ -555,6 +570,11 @@ var Scene = (function (_super) {
         _this.renderPathDensity.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
         return _this;
     }
+    Scene.prototype.sampleLight = function () {
+        var lightIndex = Math.floor(this.lights().length * Math.random());
+        var light = this.lights()[lightIndex];
+        return light.sampleShape();
+    };
     Scene.prototype.recalculatePaths = function () {
         var _this = this;
         for (var _i = 0, _a = this.paths; _i < _a.length; _i++) {
@@ -604,6 +624,7 @@ var Scene = (function (_super) {
             this.canvas.globalAlpha = 0.02;
             for (var _c = 0, renderPaths_1 = renderPaths; _c < renderPaths_1.length; _c++) {
                 var p = renderPaths_1[_c];
+                this.canvas.strokeStyle = p.properties.has("HitLight") ? COLOR_WARNING().hex : COLOR_INFO().hex;
                 this.canvas.beginPath();
                 this.canvas.moveTo(p.points[0].p.x, p.points[0].p.y);
                 for (var _d = 0, _e = p.points; _d < _e.length; _d++) {
@@ -624,6 +645,8 @@ var Scene = (function (_super) {
     };
     Scene.prototype.addShape = function (shape) {
         this.shapes.push(shape);
+        if (shape instanceof Light)
+            this.lights.push(shape);
         this.svgElement().add(shape.svgElement());
         shape.svgElement().drag();
     };
@@ -646,6 +669,19 @@ var Scene = (function (_super) {
         }
         return hitSomething;
     };
+    Scene.prototype.test = function (a, b) {
+        var r = {
+            o: a, d: normalize(sub(b, a))
+        };
+        var res = new Intersection();
+        if (!this.intersect(r, res)) {
+            return false;
+        }
+        var dist = vlength(sub(res.p, b));
+        if (dist > 2)
+            return false;
+        return true;
+    };
     Scene.prototype.makeSvg = function (s) {
         var elements = [];
         var group = s.group();
@@ -660,6 +696,7 @@ var SinglePathSampler = (function () {
     SinglePathSampler.prototype.tracePath = function (ray, depth, scene) {
         var path = new PathData();
         path.points = [];
+        path.properties = new Set();
         path.points.push({ p: ray.o, n: ray.d, shape: null });
         for (var i = 0; i < depth; i++) {
             var intersect = new Intersection();
@@ -669,6 +706,7 @@ var SinglePathSampler = (function () {
             }
             path.points.push(intersect);
             if (intersect.shape instanceof Light) {
+                path.properties.add("HitLight");
                 break;
             }
             ray.o = intersect.p;
@@ -693,6 +731,7 @@ var ScriptedPathSampler = (function () {
         var path = new PathData();
         var result = [];
         result.push(path);
+        path.properties = new Set();
         path.points = [];
         path.points.push({ p: ray.o, n: ray.d, shape: null });
         var intersect = new Intersection();
@@ -702,11 +741,12 @@ var ScriptedPathSampler = (function () {
         }
         path.points.push(intersect);
         if (intersect.shape instanceof Light) {
+            path.properties.add("HitLight");
             return result;
         }
         var dirs;
         try {
-            dirs = sampleDir(intersect, ray);
+            dirs = sampleDir(intersect, ray, scene);
         }
         catch (runtimeError) {
             $("#code-footer").text("Sample Error:" + runtimeError.name + "-" + runtimeError.message);
@@ -728,6 +768,9 @@ var ScriptedPathSampler = (function () {
             }
             for (var _a = 0, newPaths_3 = newPaths; _a < newPaths_3.length; _a++) {
                 var newPath = newPaths_3[_a];
+                newPath.properties.forEach(function (value, index, set) {
+                    path.properties.add(value);
+                }, this);
                 result.push(newPath);
             }
         }
