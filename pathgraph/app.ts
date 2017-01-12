@@ -774,7 +774,7 @@ class SinglePathSampler implements Sampler {
 }
 
 
-var sampleDirFunc: KnockoutObservable<(intersect: Intersection, ray: Ray) => Vec2[]> = ko.observable<(intersect: Intersection, ray: Ray) => Vec2[]>();
+var sampleDirFunc = ko.observable<(intersect: Intersection, ray: Ray) => Vec2[]>();
 
 class ScriptedPathSampler implements Sampler {
 

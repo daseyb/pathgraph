@@ -95,6 +95,7 @@ return [d];
         editor.setTheme("ace/theme/monokai");
         editor.getSession().setMode("ace/mode/javascript");
         editor.getSession().on('change', function (e) {
+            if (!sampleDirFunc) return;
 
             try {
                 var intersectFunc = new Function("intersect", "ray", editor.getValue());
