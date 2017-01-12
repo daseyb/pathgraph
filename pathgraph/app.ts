@@ -1063,7 +1063,11 @@ function toDataUrl(e: Snap.Element, maxWidth: number, maxHeight: number) {
         contents: e.outerSVG()
     });
 
-    if(img) img.remove();
+
+    if (img) {
+        svg = svg.replace("href", "xlink:href");
+        img.remove();
+    }
 
     return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
 }

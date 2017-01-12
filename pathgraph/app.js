@@ -817,8 +817,10 @@ function toDataUrl(e, maxWidth, maxHeight) {
         height: h,
         contents: e.outerSVG()
     });
-    if (img)
+    if (img) {
+        svg = svg.replace("href", "xlink:href");
         img.remove();
+    }
     return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
 }
 window.onload = function () {
