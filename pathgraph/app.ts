@@ -607,15 +607,27 @@ class Polygon extends Shape {
 
 class Camera extends Thing {
 
+    fov: KnockoutObservable<number>;
+
     constructor(pos: Vec2, rot: number, s: Snap.Paper) {
         super(s);
+        this.fov = ko.observable<number>(60);
         this.setup();
         this.pos(pos);
         this.rot(rot);
     }
 
     forward() {
-        return transformDir(new Vec2(1, 0), this.transform());
+        return this.sampleDir(0.5);
+        //return transformDir(new Vec2(1, 0), this.transform());
+    }
+
+    sampleDir(psp: number) {
+        var mat = Snap.matrix();
+        mat.rotate(-this.fov() / 2 + this.fov() * psp);
+        var dir = transformDir(new Vec2(1, 0), mat);
+
+        return transformDir(dir, this.transform());
     }
 
     lookAt(target: Vec2, pos?: Vec2) {
@@ -633,16 +645,31 @@ class Camera extends Thing {
     makeSvg(s: Snap.Paper) {
         var g = s.group();
 
-        var el = s.path("M 0,0 20,15 A 40,40 1 0,0 20,-15 Z");
+        var mat = Snap.matrix();
+        mat.rotate(-this.fov() / 2);
+        var dir = transformDir(new Vec2(1, 0), mat);
+
+        var eyeRadDir = mul(dir, 25);
+
+        var el = s.path(`M 0,0 ${eyeRadDir.x}, ${eyeRadDir.y} A 40, 40 1 0, 1 ${eyeRadDir.x}, ${-eyeRadDir.y} Z`);
         CAM_MATERIAL().apply(el);
         g.add(el);
-        var line = s.line(0, 0, 26, 20);
-        CAM_MATERIAL().apply(line);
-        g.add(line);
 
-        var line = s.line(0, 0, 26, -20);
-        CAM_MATERIAL().apply(line);
-        g.add(line);
+
+        dir = mul(dir, 32);
+
+        {
+            var line = s.line(0, 0, dir.x, dir.y);
+            CAM_MATERIAL().apply(line);
+            g.add(line);
+        }
+
+
+        {
+            var line = s.line(0, 0, dir.x, -dir.y);
+            CAM_MATERIAL().apply(line);
+            g.add(line);
+        }
 
         var circle = s.ellipse(19, 0, 2, 4);
         CAM_MATERIAL().apply(circle);
@@ -720,9 +747,30 @@ interface Sampler {
 
 declare var HDR2D_BLEND_ADD : any;
 
+class SampleSpaceVisualization {
+    canvas: CanvasRenderingContext2D;
+
+    constructor(canvas: CanvasRenderingContext2D) {
+        this.canvas = canvas;
+    }
+
+    update(scene: Scene, cam: Camera) {
+        var width = this.canvas.canvas.width;
+        var height = this.canvas.canvas.width;
+
+        this.canvas.fillStyle = <string>Snap.rgb(Math.random() * 255, Math.random() * 255, Math.random() * 255);
+        this.canvas.rect(0, 0, width, height);
+        this.canvas.fill();
+    }
+}
+
+
 class Scene extends Shape {
 
     renderPathDensity: KnockoutObservable<boolean>;
+    visualizePrimarySampleSpace: KnockoutObservable<boolean>;
+
+    sampleSpaceVis: SampleSpaceVisualization;
 
     shapes: KnockoutObservableArray<Shape>;
 
@@ -744,6 +792,7 @@ class Scene extends Shape {
     constructor(sampler : Sampler, s: Snap.Paper) {
         super(s);
 
+        this.visualizePrimarySampleSpace = ko.observable<boolean>(false);
         this.renderedPathsCount = ko.observable<number>(0);
         this.renderPathDensity = ko.observable<boolean>(false);
         this.sampler = sampler;
@@ -793,6 +842,10 @@ class Scene extends Shape {
                     this.paths.push(path);
                 }
             }
+        }
+
+        if (this.visualizePrimarySampleSpace()) {
+            this.sampleSpaceVis.update(this, this.cameras()[0]);
         }
 
     }
@@ -912,6 +965,7 @@ class Scene extends Shape {
         return group;
     }
 }
+
 
 class SinglePathSampler implements Sampler {
     tracePath(ray: Ray, depth: number, scene: Scene): PathData[] {
@@ -1102,6 +1156,11 @@ window.onload = () => {
     canvas.height = height;
     scene.canvas = <CanvasRenderingContext2D>canvas.getContext("2d");
 
+    var sampleCanvas = <HTMLCanvasElement>document.getElementById("sample-space");
+    sampleCanvas.width = $(sampleCanvas).width();
+    sampleCanvas.height = sampleCanvas.width;
+
+    scene.sampleSpaceVis = new SampleSpaceVisualization(<CanvasRenderingContext2D>sampleCanvas.getContext("2d"));
 
     scene.addCamera(cam);
 

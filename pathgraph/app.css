@@ -112,6 +112,16 @@ body {
     position: absolute; 
 }
 
+#sample-space {
+    z-index: 0;
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    align-self: center;
+    width: 100%;
+    box-shadow: rgba(0, 0, 0, 0.4) 0px 0px 2px 2px inset;
+}
+
 #footer {
     position: absolute;
     bottom: 0;

@@ -482,13 +482,21 @@ var Camera = (function (_super) {
     __extends(Camera, _super);
     function Camera(pos, rot, s) {
         var _this = _super.call(this, s) || this;
+        _this.fov = ko.observable(60);
         _this.setup();
         _this.pos(pos);
         _this.rot(rot);
         return _this;
     }
     Camera.prototype.forward = function () {
-        return transformDir(new Vec2(1, 0), this.transform());
+        return this.sampleDir(0.5);
+        //return transformDir(new Vec2(1, 0), this.transform());
+    };
+    Camera.prototype.sampleDir = function (psp) {
+        var mat = Snap.matrix();
+        mat.rotate(-this.fov() / 2 + this.fov() * psp);
+        var dir = transformDir(new Vec2(1, 0), mat);
+        return transformDir(dir, this.transform());
     };
     Camera.prototype.lookAt = function (target, pos) {
         if (!pos) {
@@ -503,15 +511,24 @@ var Camera = (function (_super) {
     };
     Camera.prototype.makeSvg = function (s) {
         var g = s.group();
-        var el = s.path("M 0,0 20,15 A 40,40 1 0,0 20,-15 Z");
+        var mat = Snap.matrix();
+        mat.rotate(-this.fov() / 2);
+        var dir = transformDir(new Vec2(1, 0), mat);
+        var eyeRadDir = mul(dir, 25);
+        var el = s.path("M 0,0 " + eyeRadDir.x + ", " + eyeRadDir.y + " A 40, 40 1 0, 1 " + eyeRadDir.x + ", " + -eyeRadDir.y + " Z");
         CAM_MATERIAL().apply(el);
         g.add(el);
-        var line = s.line(0, 0, 26, 20);
-        CAM_MATERIAL().apply(line);
-        g.add(line);
-        var line = s.line(0, 0, 26, -20);
-        CAM_MATERIAL().apply(line);
-        g.add(line);
+        dir = mul(dir, 32);
+        {
+            var line = s.line(0, 0, dir.x, dir.y);
+            CAM_MATERIAL().apply(line);
+            g.add(line);
+        }
+        {
+            var line = s.line(0, 0, dir.x, -dir.y);
+            CAM_MATERIAL().apply(line);
+            g.add(line);
+        }
         var circle = s.ellipse(19, 0, 2, 4);
         CAM_MATERIAL().apply(circle);
         g.add(circle);
@@ -551,10 +568,24 @@ var Path = (function (_super) {
     };
     return Path;
 }(Thing));
+var SampleSpaceVisualization = (function () {
+    function SampleSpaceVisualization(canvas) {
+        this.canvas = canvas;
+    }
+    SampleSpaceVisualization.prototype.update = function (scene, cam) {
+        var width = this.canvas.canvas.width;
+        var height = this.canvas.canvas.width;
+        this.canvas.fillStyle = Snap.rgb(Math.random() * 255, Math.random() * 255, Math.random() * 255);
+        this.canvas.rect(0, 0, width, height);
+        this.canvas.fill();
+    };
+    return SampleSpaceVisualization;
+}());
 var Scene = (function (_super) {
     __extends(Scene, _super);
     function Scene(sampler, s) {
         var _this = _super.call(this, s) || this;
+        _this.visualizePrimarySampleSpace = ko.observable(false);
         _this.renderedPathsCount = ko.observable(0);
         _this.renderPathDensity = ko.observable(false);
         _this.sampler = sampler;
@@ -600,6 +631,9 @@ var Scene = (function (_super) {
                     this.paths.push(path);
                 }
             }
+        }
+        if (this.visualizePrimarySampleSpace()) {
+            this.sampleSpaceVis.update(this, this.cameras()[0]);
         }
     };
     Scene.prototype.updateDensity = function () {
@@ -845,6 +879,10 @@ window.onload = function () {
     canvas.width = width;
     canvas.height = height;
     scene.canvas = canvas.getContext("2d");
+    var sampleCanvas = document.getElementById("sample-space");
+    sampleCanvas.width = $(sampleCanvas).width();
+    sampleCanvas.height = sampleCanvas.width;
+    scene.sampleSpaceVis = new SampleSpaceVisualization(sampleCanvas.getContext("2d"));
     scene.addCamera(cam);
     scene.addShape(new Circle(new Vec2(250, 280), 50, s));
     scene.addShape(new Light(new Vec2(300, 200), 4, s));
