@@ -6,6 +6,7 @@ var __extends = (this && this.__extends) || function (d, b) {
     function __() { this.constructor = d; }
     d.prototype = b === null ? Object.create(b) : (__.prototype = b.prototype, new __());
 };
+var _this = this;
 var COLOR_PRIMARY = ko.observable(Snap.getRGB("#2C3E50"));
 var COLOR_SUCCESS = ko.observable(Snap.getRGB("#18BC9C"));
 var COLOR_INFO = ko.observable(Snap.getRGB("#3498DB"));
@@ -490,7 +491,6 @@ var Camera = (function (_super) {
     }
     Camera.prototype.forward = function () {
         return this.sampleDir(0.5);
-        //return transformDir(new Vec2(1, 0), this.transform());
     };
     Camera.prototype.sampleDir = function (psp) {
         var mat = Snap.matrix();
@@ -571,13 +571,98 @@ var Path = (function (_super) {
 var SampleSpaceVisualization = (function () {
     function SampleSpaceVisualization(canvas) {
         this.canvas = canvas;
+        this.selectedCoordinates = ko.observable(new Vec2(0.5, 0.5));
     }
+    SampleSpaceVisualization.prototype.getPath = function (scene, cam, coord) {
+        var path = new PathData();
+        path.points = [];
+        path.properties = new Set();
+        var dir = cam.sampleDir(coord.x);
+        var primaryRay = {
+            o: add(cam.pos(), mul(dir, 21)),
+            d: dir
+        };
+        path.points.push({ p: primaryRay.o, n: primaryRay.d, shape: null });
+        var primaryHit = new Intersection();
+        var didHitPrimary = scene.intersect(primaryRay, primaryHit);
+        if (!didHitPrimary) {
+            path.points.push({ p: add(primaryRay.o, mul(primaryRay.d, 20000)), n: primaryRay.d, shape: null });
+            return path;
+        }
+        path.points.push(primaryHit);
+        var secondaryDir = primaryHit.n;
+        var mat = Snap.matrix();
+        mat.rotate(-90 + 180 * coord.y);
+        secondaryDir = transformDir(secondaryDir, mat);
+        var secondaryRay = {
+            o: add(primaryHit.p, mul(secondaryDir, 1)),
+            d: secondaryDir
+        };
+        var secondaryHit = new Intersection();
+        var didHitSecondary = scene.intersect(secondaryRay, secondaryHit);
+        if (!didHitSecondary) {
+            path.points.push({ p: add(secondaryRay.o, mul(secondaryRay.d, 20000)), n: secondaryRay.d, shape: null });
+            return path;
+        }
+        path.points.push(secondaryHit);
+        return path;
+    };
     SampleSpaceVisualization.prototype.update = function (scene, cam) {
         var width = this.canvas.canvas.width;
         var height = this.canvas.canvas.width;
-        this.canvas.fillStyle = Snap.rgb(Math.random() * 255, Math.random() * 255, Math.random() * 255);
-        this.canvas.rect(0, 0, width, height);
-        this.canvas.fill();
+        var newDataObj = this.canvas.createImageData(width, height);
+        var newData = newDataObj.data;
+        for (var x = 0; x < width; x++) {
+            var dir = cam.sampleDir(x / width);
+            var primaryRay = {
+                o: cam.pos(),
+                d: dir
+            };
+            var primaryHit = new Intersection();
+            var didHitPrimary = scene.intersect(primaryRay, primaryHit);
+            for (var y = 0; y < height; y++) {
+                var pixelIndex = (x + width * y) * 4;
+                if (!didHitPrimary) {
+                    newData[pixelIndex + 0] = 0;
+                    newData[pixelIndex + 1] = 0;
+                    newData[pixelIndex + 2] = 0;
+                    newData[pixelIndex + 3] = 255;
+                    continue;
+                }
+                var secondaryDir = primaryHit.n;
+                var mat = Snap.matrix();
+                mat.rotate(-90 + 180 * y / height);
+                secondaryDir = transformDir(secondaryDir, mat);
+                var secondaryRay = {
+                    o: add(primaryHit.p, mul(secondaryDir, 1)),
+                    d: secondaryDir
+                };
+                var secondaryHit = new Intersection();
+                var didHitSecondary = scene.intersect(secondaryRay, secondaryHit);
+                if (!didHitSecondary) {
+                    newData[pixelIndex + 0] = 100;
+                    newData[pixelIndex + 1] = 100;
+                    newData[pixelIndex + 2] = 100;
+                    newData[pixelIndex + 3] = 255;
+                    continue;
+                }
+                newData[pixelIndex + 0] = 200;
+                newData[pixelIndex + 1] = 200;
+                newData[pixelIndex + 2] = 200;
+                newData[pixelIndex + 3] = 255;
+            }
+        }
+        this.canvas.putImageData(newDataObj, 0, 0);
+        this.canvas.lineWidth = 2;
+        this.canvas.strokeStyle = COLOR_INFO().hex;
+        this.canvas.beginPath();
+        this.canvas.moveTo(this.selectedCoordinates().x * width, 0);
+        this.canvas.lineTo(this.selectedCoordinates().x * width, height);
+        this.canvas.stroke();
+        this.canvas.strokeStyle = COLOR_WARNING().hex;
+        this.canvas.beginPath();
+        this.canvas.arc(this.selectedCoordinates().x * width, this.selectedCoordinates().y * height, 2, 0, 360);
+        this.canvas.stroke();
     };
     return SampleSpaceVisualization;
 }());
@@ -619,7 +704,7 @@ var Scene = (function (_super) {
         if (this.renderPathDensity()) {
             window.requestAnimationFrame(function () { return _this.updateDensity(); });
         }
-        else {
+        else if (!this.visualizePrimarySampleSpace()) {
             for (var _b = 0, _c = this.cameras(); _b < _c.length; _b++) {
                 var cam = _c[_b];
                 var fwd = cam.forward();
@@ -634,6 +719,9 @@ var Scene = (function (_super) {
         }
         if (this.visualizePrimarySampleSpace()) {
             this.sampleSpaceVis.update(this, this.cameras()[0]);
+            var p = this.sampleSpaceVis.getPath(this, this.cameras()[0], this.sampleSpaceVis.selectedCoordinates());
+            var path = new Path(p, this.paper);
+            this.paths.push(path);
         }
     };
     Scene.prototype.updateDensity = function () {
@@ -883,6 +971,15 @@ window.onload = function () {
     sampleCanvas.width = $(sampleCanvas).width();
     sampleCanvas.height = sampleCanvas.width;
     scene.sampleSpaceVis = new SampleSpaceVisualization(sampleCanvas.getContext("2d"));
+    sampleCanvas.addEventListener("mousemove", function (e) {
+        if (e.button == 0 && !e.shiftKey)
+            return;
+        var x = (e.pageX - sampleCanvas.offsetLeft) / sampleCanvas.offsetWidth;
+        var y = (e.pageY - sampleCanvas.offsetTop) / sampleCanvas.offsetHeight;
+        console.log(new Vec2(x, y));
+        scene.sampleSpaceVis.selectedCoordinates(new Vec2(x, y));
+        scene.recalculatePaths();
+    }, _this);
     scene.addCamera(cam);
     scene.addShape(new Circle(new Vec2(250, 280), 50, s));
     scene.addShape(new Light(new Vec2(300, 200), 4, s));
