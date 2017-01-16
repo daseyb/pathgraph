@@ -180,6 +180,7 @@ var Thing = (function () {
     function Thing(s) {
         var _this = this;
         this.paper = s;
+        this.cachedTransform = Snap.matrix();
         this.svgObserver = new MutationObserver(function (recs, inst) {
             _this.svgElement.valueHasMutated();
         });
@@ -189,12 +190,15 @@ var Thing = (function () {
             read: function () {
                 if (!_this.svgElement())
                     return Snap.matrix();
-                var trans = _this.svgElement().transform().globalMatrix;
-                return trans;
+                _this.cachedTransform = _this.svgElement().transform().globalMatrix;
+                _this.cachedTransformInv = _this.cachedTransform.invert();
+                return _this.cachedTransform;
             },
             write: function (val) {
                 if (!_this.svgElement())
                     return;
+                _this.cachedTransform = val;
+                _this.cachedTransformInv = _this.cachedTransform.invert();
                 _this.svgElement().attr({ transform: val });
                 _this.material().apply(_this.svgElement());
             },
@@ -290,7 +294,7 @@ var Light = (function (_super) {
         return _this;
     }
     Light.prototype.intersect = function (ray, result) {
-        ray = transformRay(ray, this.transform().invert());
+        ray = transformRay(ray, this.cachedTransformInv);
         var t0;
         var t1; // solutions for t if the ray intersects 
         var L = mul(ray.o, -1);
@@ -313,8 +317,8 @@ var Light = (function (_super) {
         }
         result.p = add(ray.o, mul(ray.d, t0));
         result.n = normalize(result.p);
-        result.p = transformPoint(result.p, this.transform());
-        result.n = transformDir(result.n, this.transform());
+        result.p = transformPoint(result.p, this.cachedTransform);
+        result.n = transformDir(result.n, this.cachedTransform);
         return true;
     };
     Light.prototype.makeSvg = function (s) {
@@ -352,7 +356,7 @@ var Circle = (function (_super) {
         return _this;
     }
     Circle.prototype.intersect = function (ray, result) {
-        ray = transformRay(ray, this.transform().invert());
+        ray = transformRay(ray, this.cachedTransformInv);
         var t0;
         var t1; // solutions for t if the ray intersects 
         var L = mul(ray.o, -1);
@@ -375,8 +379,8 @@ var Circle = (function (_super) {
         }
         result.p = add(ray.o, mul(ray.d, t0));
         result.n = normalize(result.p);
-        result.p = transformPoint(result.p, this.transform());
-        result.n = transformDir(result.n, this.transform());
+        result.p = transformPoint(result.p, this.cachedTransform);
+        result.n = transformDir(result.n, this.cachedTransform);
         return true;
     };
     Circle.prototype.makeSvg = function (s) {
@@ -389,6 +393,12 @@ var Circle = (function (_super) {
     };
     return Circle;
 }(Shape));
+var BOX_CORNERS = [
+    new Vec2(0, 0),
+    new Vec2(1, 0),
+    new Vec2(1, 1),
+    new Vec2(0, 1)
+];
 var Box = (function (_super) {
     __extends(Box, _super);
     function Box(pos, size, s) {
@@ -399,18 +409,12 @@ var Box = (function (_super) {
         return _this;
     }
     Box.prototype.intersect = function (ray, result) {
-        ray = transformRay(ray, this.transform().invert());
-        var corners = [
-            new Vec2(0, 0),
-            new Vec2(1, 0),
-            new Vec2(1, 1),
-            new Vec2(0, 1)
-        ];
+        ray = transformRay(ray, this.cachedTransformInv);
         var minDist = 20000000;
         var hitSomething = false;
         for (var i = 0; i < 4; i++) {
-            var curr = corners[i];
-            var next = corners[(i + 1) % 4];
+            var curr = BOX_CORNERS[i];
+            var next = BOX_CORNERS[(i + 1) % 4];
             var intersect = new Intersection();
             if (intersectRayLinesegment(ray, curr, next, intersect)) {
                 hitSomething = true;
@@ -424,8 +428,8 @@ var Box = (function (_super) {
         }
         if (!hitSomething)
             return false;
-        result.p = transformPoint(result.p, this.transform());
-        result.n = transformDir(result.n, this.transform());
+        result.p = transformPoint(result.p, this.cachedTransform);
+        result.n = transformDir(result.n, this.cachedTransform);
         return true;
     };
     Box.prototype.makeSvg = function (s) {
@@ -444,7 +448,7 @@ var Polygon = (function (_super) {
         return _this;
     }
     Polygon.prototype.intersect = function (ray, result) {
-        ray = transformRay(ray, this.transform().invert());
+        ray = transformRay(ray, this.cachedTransformInv);
         var minDist = 20000000;
         var hitSomething = false;
         for (var i = 0; i < this.points.length; i++) {
@@ -463,8 +467,8 @@ var Polygon = (function (_super) {
         }
         if (!hitSomething)
             return false;
-        result.p = transformPoint(result.p, this.transform());
-        result.n = transformDir(result.n, this.transform());
+        result.p = transformPoint(result.p, this.cachedTransform);
+        result.n = transformDir(result.n, this.cachedTransform);
         return true;
     };
     Polygon.prototype.makeSvg = function (s) {
@@ -494,9 +498,9 @@ var Camera = (function (_super) {
     };
     Camera.prototype.sampleDir = function (psp) {
         var mat = Snap.matrix();
-        mat.rotate(-this.fov() / 2 + this.fov() * psp);
+        setRotation(mat, -this.fov() / 2 + this.fov() * psp);
         var dir = transformDir(new Vec2(1, 0), mat);
-        return transformDir(dir, this.transform());
+        return transformDir(dir, this.cachedTransform);
     };
     Camera.prototype.lookAt = function (target, pos) {
         if (!pos) {
@@ -568,6 +572,14 @@ var Path = (function (_super) {
     };
     return Path;
 }(Thing));
+function setRotation(mat, r) {
+    var cosr = Math.cos(Snap.rad(r));
+    var sinr = Math.sin(Snap.rad(r));
+    mat.a = cosr;
+    mat.b = sinr;
+    mat.c = -sinr;
+    mat.d = cosr;
+}
 var SampleSpaceVisualization = (function () {
     function SampleSpaceVisualization(canvas) {
         this.canvas = canvas;
@@ -592,7 +604,7 @@ var SampleSpaceVisualization = (function () {
         path.points.push(primaryHit);
         var secondaryDir = primaryHit.n;
         var mat = Snap.matrix();
-        mat.rotate(-90 + 180 * coord.y);
+        setRotation(mat, -90 + 180 * coord.y);
         secondaryDir = transformDir(secondaryDir, mat);
         var secondaryRay = {
             o: add(primaryHit.p, mul(secondaryDir, 1)),
@@ -612,6 +624,7 @@ var SampleSpaceVisualization = (function () {
         var height = this.canvas.canvas.width;
         var newDataObj = this.canvas.createImageData(width, height);
         var newData = newDataObj.data;
+        var mat = Snap.matrix();
         for (var x = 0; x < width; x++) {
             var dir = cam.sampleDir(x / width);
             var primaryRay = {
@@ -630,8 +643,7 @@ var SampleSpaceVisualization = (function () {
                     continue;
                 }
                 var secondaryDir = primaryHit.n;
-                var mat = Snap.matrix();
-                mat.rotate(-90 + 180 * y / height);
+                setRotation(mat, -90 + 180 * y / height);
                 secondaryDir = transformDir(secondaryDir, mat);
                 var secondaryRay = {
                     o: add(primaryHit.p, mul(secondaryDir, 1)),
@@ -968,7 +980,7 @@ window.onload = function () {
     canvas.height = height;
     scene.canvas = canvas.getContext("2d");
     var sampleCanvas = document.getElementById("sample-space");
-    sampleCanvas.width = $(sampleCanvas).width();
+    sampleCanvas.width = $(sampleCanvas).width() * 2;
     sampleCanvas.height = sampleCanvas.width;
     scene.sampleSpaceVis = new SampleSpaceVisualization(sampleCanvas.getContext("2d"));
     sampleCanvas.addEventListener("mousemove", function (e) {

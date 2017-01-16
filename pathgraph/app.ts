@@ -242,9 +242,13 @@ class Thing {
 
     svgObserver: MutationObserver;
 
+    cachedTransform: Snap.Matrix;
+    cachedTransformInv: Snap.Matrix;
+
     constructor(s: Snap.Paper) {
         this.paper = s;
 
+        this.cachedTransform = Snap.matrix();
         this.svgObserver = new MutationObserver((recs: MutationRecord[], inst: MutationObserver) => {
             this.svgElement.valueHasMutated();
         });
@@ -257,11 +261,14 @@ class Thing {
         this.transform = ko.computed<Snap.Matrix>({
             read: () => {
                 if (!this.svgElement()) return Snap.matrix();
-                var trans = this.svgElement().transform().globalMatrix;
-                return trans;
+                this.cachedTransform = this.svgElement().transform().globalMatrix;
+                this.cachedTransformInv = this.cachedTransform.invert();
+                return this.cachedTransform;
             },
             write: (val: Snap.Matrix) => {
                 if (!this.svgElement()) return;
+                this.cachedTransform = val;
+                this.cachedTransformInv = this.cachedTransform.invert();
                 this.svgElement().attr({ transform: val });
                 this.material().apply(this.svgElement());
             },
@@ -371,7 +378,7 @@ class Light extends Shape {
     }
 
     intersect(ray: Ray, result: Intersection) {
-        ray = transformRay(ray, this.transform().invert());
+        ray = transformRay(ray, this.cachedTransformInv);
 
         var t0: number;
         var t1: number; // solutions for t if the ray intersects 
@@ -399,8 +406,8 @@ class Light extends Shape {
         result.p = add(ray.o, mul(ray.d, t0));
         result.n = normalize(result.p);
 
-        result.p = transformPoint(result.p, this.transform());
-        result.n = transformDir(result.n, this.transform());
+        result.p = transformPoint(result.p, this.cachedTransform);
+        result.n = transformDir(result.n, this.cachedTransform);
 
         return true;
     }
@@ -450,8 +457,8 @@ class Circle extends Shape {
         this.scale(new Vec2(rad, rad));
     }
 
-    intersect(ray: Ray, result : Intersection) {
-        ray = transformRay(ray, this.transform().invert());
+    intersect(ray: Ray, result: Intersection) {
+        ray = transformRay(ray, this.cachedTransformInv);
 
         var t0: number;
         var t1: number; // solutions for t if the ray intersects 
@@ -479,8 +486,8 @@ class Circle extends Shape {
         result.p = add(ray.o, mul(ray.d, t0));
         result.n = normalize(result.p);
 
-        result.p = transformPoint(result.p, this.transform());
-        result.n = transformDir(result.n, this.transform());
+        result.p = transformPoint(result.p, this.cachedTransform);
+        result.n = transformDir(result.n, this.cachedTransform);
 
         return true; 
     }
@@ -496,6 +503,12 @@ class Circle extends Shape {
     }
 }
 
+var BOX_CORNERS = [
+    new Vec2(0, 0),
+    new Vec2(1, 0),
+    new Vec2(1, 1),
+    new Vec2(0, 1)
+];
 
 class Box extends Shape {
 
@@ -507,20 +520,13 @@ class Box extends Shape {
     }
 
     intersect(ray: Ray, result: Intersection) {
-        ray = transformRay(ray, this.transform().invert());
-
-        var corners = [
-            new Vec2(0, 0),
-            new Vec2(1, 0),
-            new Vec2(1, 1),
-            new Vec2(0, 1)
-        ];
+        ray = transformRay(ray, this.cachedTransformInv);
 
         var minDist = 20000000;
         var hitSomething = false;
         for (var i = 0; i < 4; i++) {
-            var curr = corners[i];
-            var next = corners[(i + 1) % 4];
+            var curr = BOX_CORNERS[i];
+            var next = BOX_CORNERS[(i + 1) % 4];
             var intersect = new Intersection();
 
             if (intersectRayLinesegment(ray, curr, next, intersect)) {
@@ -537,8 +543,8 @@ class Box extends Shape {
 
         if (!hitSomething) return false;
 
-        result.p = transformPoint(result.p, this.transform());
-        result.n = transformDir(result.n, this.transform());
+        result.p = transformPoint(result.p, this.cachedTransform);
+        result.n = transformDir(result.n, this.cachedTransform);
         return true;
     }
 
@@ -562,7 +568,7 @@ class Polygon extends Shape {
     }
 
     intersect(ray: Ray, result: Intersection) {
-        ray = transformRay(ray, this.transform().invert());
+        ray = transformRay(ray, this.cachedTransformInv);
 
         var minDist = 20000000;
         var hitSomething = false;
@@ -585,8 +591,8 @@ class Polygon extends Shape {
 
         if (!hitSomething) return false;
 
-        result.p = transformPoint(result.p, this.transform());
-        result.n = transformDir(result.n, this.transform());
+        result.p = transformPoint(result.p, this.cachedTransform);
+        result.n = transformDir(result.n, this.cachedTransform);
         return true;
     }
 
@@ -623,10 +629,10 @@ class Camera extends Thing {
 
     sampleDir(psp: number) {
         var mat = Snap.matrix();
-        mat.rotate(-this.fov() / 2 + this.fov() * psp);
+        setRotation(mat, -this.fov() / 2 + this.fov() * psp);
         var dir = transformDir(new Vec2(1, 0), mat);
 
-        return transformDir(dir, this.transform());
+        return transformDir(dir, this.cachedTransform);
     }
 
     lookAt(target: Vec2, pos?: Vec2) {
@@ -744,7 +750,16 @@ interface Sampler {
     tracePath(ray: Ray, depth: number, scene: Scene): PathData[];
 }
 
-declare var HDR2D_BLEND_ADD : any;
+function setRotation(mat: Snap.Matrix, r: number) {
+
+    var cosr = Math.cos(Snap.rad(r));
+    var sinr = Math.sin(Snap.rad(r));
+
+    mat.a = cosr;
+    mat.b = sinr;
+    mat.c = -sinr;
+    mat.d = cosr;
+}
 
 class SampleSpaceVisualization {
     canvas: CanvasRenderingContext2D;
@@ -783,7 +798,7 @@ class SampleSpaceVisualization {
 
         var secondaryDir = primaryHit.n;
         var mat = Snap.matrix();
-        mat.rotate(-90 + 180 * coord.y);
+        setRotation(mat, -90 + 180 * coord.y);
         secondaryDir = transformDir(secondaryDir, mat);
 
         var secondaryRay: Ray = {
@@ -812,6 +827,7 @@ class SampleSpaceVisualization {
 
         var newData = newDataObj.data;
 
+        var mat = Snap.matrix();
 
         for (var x = 0; x < width; x++) {
             var dir = cam.sampleDir(x / width);
@@ -839,8 +855,7 @@ class SampleSpaceVisualization {
 
                 var secondaryDir = primaryHit.n;
 
-                var mat = Snap.matrix();
-                mat.rotate(-90 + 180 * y / height);
+                setRotation(mat, -90 + 180 * y / height);
                 secondaryDir = transformDir(secondaryDir, mat);
 
                 var secondaryRay: Ray = {
@@ -1281,7 +1296,7 @@ window.onload = () => {
     var sampleCanvas = <HTMLCanvasElement>document.getElementById("sample-space");
 
 
-    sampleCanvas.width = $(sampleCanvas).width();
+    sampleCanvas.width = $(sampleCanvas).width() * 2;
     sampleCanvas.height = sampleCanvas.width;
 
     scene.sampleSpaceVis = new SampleSpaceVisualization(<CanvasRenderingContext2D>sampleCanvas.getContext("2d"));
