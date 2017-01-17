@@ -1379,7 +1379,7 @@ window.onload = () => {
     var sampleCanvas = <HTMLCanvasElement>document.getElementById("sample-space");
 
 
-    sampleCanvas.width = $(sampleCanvas).width() * 0.5;
+    sampleCanvas.width = $(sampleCanvas).width();
     sampleCanvas.height = sampleCanvas.width;
 
     scene.sampleSpaceVis = new SampleSpaceVisualization(<CanvasRenderingContext2D>sampleCanvas.getContext("2d"));

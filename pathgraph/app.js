@@ -1044,7 +1044,7 @@ window.onload = function () {
     canvas.height = height;
     scene.canvas = canvas.getContext("2d");
     var sampleCanvas = document.getElementById("sample-space");
-    sampleCanvas.width = $(sampleCanvas).width() * 0.5;
+    sampleCanvas.width = $(sampleCanvas).width();
     sampleCanvas.height = sampleCanvas.width;
     scene.sampleSpaceVis = new SampleSpaceVisualization(sampleCanvas.getContext("2d"));
     sampleCanvas.addEventListener("mousemove", function (e) {
