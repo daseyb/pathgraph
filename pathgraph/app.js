@@ -135,24 +135,41 @@ function transformRay(ray, mat) {
     return new Ray(transformPoint(ray.o, mat), transformDir(ray.d, mat));
 }
 var Material = (function () {
-    function Material(outlineColor, fillColor, outlineOpacity, fillOpacity, outlineWidth) {
+    function Material(name, outlineColor, fillColor, outlineOpacity, fillOpacity, outlineWidth) {
         var _this = this;
-        this.outlineColor = outlineColor;
-        this.fillColor = fillColor;
+        this.outlineColor = ko.observable(outlineColor);
+        this.fillColor = ko.observable(fillColor);
+        ;
         this.outlineOpacity = outlineOpacity;
         this.fillOpacity = fillOpacity;
         this.outlineWidth = outlineWidth;
-        this.linkedElements = [];
-        this.outlineColor.subscribe(function (newValue) { _this.update(); });
-        this.fillColor.subscribe(function (newValue) { _this.update(); });
+        this.linkedElements = ko.observableArray([]);
+        this.isLight = ko.observable(false);
+        this.name = ko.observable(name);
+        this.outlineColor.subscribe(function (newValue) { _this.update(); }, this);
+        this.fillColor.subscribe(function (newValue) { _this.update(); }, this);
     }
     Material.prototype.update = function () {
-        for (var _i = 0, _a = this.linkedElements; _i < _a.length; _i++) {
+        for (var _i = 0, _a = this.linkedElements(); _i < _a.length; _i++) {
             var el = _a[_i];
-            this.apply(el.svgElement());
+            el.attr({
+                fill: this.fillOpacity > 0.01 ? this.fillColor().hex : "none",
+                stroke: this.outlineColor().hex,
+                strokeWidth: this.outlineWidth / (el.transform().localMatrix ? el.transform().localMatrix.split().scalex : 1),
+                "fill-opacity": this.fillOpacity,
+                "stroke-opacity": this.outlineOpacity,
+            });
         }
     };
     Material.prototype.apply = function (el) {
+        var elMat = el.mat;
+        if (elMat != this) {
+            if (elMat) {
+                elMat.linkedElements.remove(el);
+            }
+            el.mat = this;
+            this.linkedElements.push(el);
+        }
         el.attr({
             fill: this.fillOpacity > 0.01 ? this.fillColor().hex : "none",
             stroke: this.outlineColor().hex,
@@ -160,32 +177,41 @@ var Material = (function () {
             "fill-opacity": this.fillOpacity,
             "stroke-opacity": this.outlineOpacity,
         });
+        for (var _i = 0, _a = el.children(); _i < _a.length; _i++) {
+            var child = _a[_i];
+            this.apply(child);
+        }
     };
     Material.prototype.applyTo = function (el) {
-        if (el.material) {
-            var index = el.material().linkedElements.indexOf(el);
-            if (index != -1)
-                el.material().linkedElements.splice(index, 1);
-        }
-        this.linkedElements.push(el);
         this.apply(el.svgElement());
     };
     return Material;
 }());
-var DEFAULT_MATERIAL = ko.observable(new Material(COLOR_DANGER, BACKGROUND_COLOR, 1.0, 0.25, 2));
-var CAM_MATERIAL = ko.observable(new Material(CAM_OUTLINE, CAM_BACKGROUND_COLOR, 1.0, 0.75, 2));
-var PATH_MATERIAL = ko.observable(new Material(COLOR_SUCCESS, BACKGROUND_COLOR, 1.0, 0.0, 2));
-var LIGHT_MATERIAL = ko.observable(new Material(COLOR_WARNING, BACKGROUND_COLOR, 1.0, 0.25, 0.5));
+Material.MATERIAL_MAP = {};
+var DEFAULT_MATERIAL = ko.observable(new Material("Default", COLOR_DANGER(), BACKGROUND_COLOR(), 1.0, 0.25, 2));
+var CAM_MATERIAL = ko.observable(new Material("Camera", CAM_OUTLINE(), CAM_BACKGROUND_COLOR(), 1.0, 0.75, 2));
+var PATH_MATERIAL = ko.observable(new Material("Path", COLOR_SUCCESS(), BACKGROUND_COLOR(), 1.0, 0.0, 2));
+var LIGHT_MATERIAL = ko.observable(new Material("Light", COLOR_WARNING(), BACKGROUND_COLOR(), 1.0, 0.25, 0.5));
 var Thing = (function () {
     function Thing(s) {
         var _this = this;
         this.paper = s;
         this.cachedTransform = Snap.matrix();
         this.svgObserver = new MutationObserver(function (recs, inst) {
-            _this.svgElement.valueHasMutated();
+            var transformMutated = false;
+            for (var _i = 0, recs_1 = recs; _i < recs_1.length; _i++) {
+                var rec = recs_1[_i];
+                if (rec.attributeName == "transform") {
+                    transformMutated = true;
+                    break;
+                }
+            }
+            if (transformMutated) {
+                _this.svgElement.valueHasMutated();
+            }
         });
         this.svgElement = ko.observable();
-        this.material = DEFAULT_MATERIAL;
+        this.material = ko.observable(DEFAULT_MATERIAL());
         this.transform = ko.computed({
             read: function () {
                 if (!_this.svgElement())
@@ -247,14 +273,21 @@ var Thing = (function () {
             owner: this
         });
     }
+    Thing.prototype.destroySvg = function (el) {
+        this.material().linkedElements.remove(el);
+        for (var _i = 0, _a = el.children(); _i < _a.length; _i++) {
+            var child = _a[_i];
+            this.destroySvg(child);
+        }
+    };
+    Thing.prototype.destroy = function () {
+        this.destroySvg(this.svgElement());
+        this.svgElement().remove();
+    };
     Thing.prototype.setup = function () {
         var _this = this;
         this.svgElement(this.makeSvg(this.paper));
-        this.material.subscribe(function (newValue) {
-            _this.material().applyTo(_this);
-        });
-        this.material = DEFAULT_MATERIAL;
-        this.material.subscribe(function (newValue) { console.log("Test"); newValue.applyTo(_this); }, this);
+        this.material.subscribe(function (newValue) { newValue.applyTo(_this); }, this);
         this.svgObserver.observe(this.svgElement().node, { attributes: true, subtree: true });
         this.svgElement().node.addEventListener("mousewheel", function (ev) {
             if (ev.shiftKey) {
@@ -291,6 +324,7 @@ var Light = (function (_super) {
         _this.setup();
         _this.pos(pos);
         _this.scale(new Vec2(rad, rad));
+        _this.material(LIGHT_MATERIAL());
         return _this;
     }
     Light.prototype.intersect = function (ray, result) {
@@ -324,7 +358,7 @@ var Light = (function (_super) {
     Light.prototype.makeSvg = function (s) {
         var g = s.group();
         var circle = s.circle(0, 0, 1);
-        LIGHT_MATERIAL().apply(circle);
+        this.material().apply(circle);
         g.add(circle);
         var mat = Snap.matrix();
         var xAxis = new Vec2(1, 0);
@@ -334,10 +368,10 @@ var Light = (function (_super) {
             var angle = 360 / count * i;
             var p = mul(transformPoint(xAxis, mat), 5);
             var line = s.line(0, 0, p.x, p.y);
-            LIGHT_MATERIAL().apply(line);
+            this.material().apply(line);
             g.add(line);
         }
-        LIGHT_MATERIAL().apply(g);
+        this.material().apply(g);
         g.data("thing", this);
         return g;
     };
@@ -491,6 +525,7 @@ var Camera = (function (_super) {
         _this.setup();
         _this.pos(pos);
         _this.rot(rot);
+        _this.material(CAM_MATERIAL());
         return _this;
     }
     Camera.prototype.forward = function () {
@@ -520,21 +555,21 @@ var Camera = (function (_super) {
         var dir = transformDir(new Vec2(1, 0), mat);
         var eyeRadDir = mul(dir, 25);
         var el = s.path("M 0,0 " + eyeRadDir.x + ", " + eyeRadDir.y + " A 40, 40 1 0, 1 " + eyeRadDir.x + ", " + -eyeRadDir.y + " Z");
-        CAM_MATERIAL().apply(el);
+        this.material().apply(el);
         g.add(el);
         dir = mul(dir, 32);
         {
             var line = s.line(0, 0, dir.x, dir.y);
-            CAM_MATERIAL().apply(line);
+            this.material().apply(line);
             g.add(line);
         }
         {
             var line = s.line(0, 0, dir.x, -dir.y);
-            CAM_MATERIAL().apply(line);
+            this.material().apply(line);
             g.add(line);
         }
         var circle = s.ellipse(19, 0, 2, 4);
-        CAM_MATERIAL().apply(circle);
+        this.material().apply(circle);
         g.add(circle);
         g.data("thing", this);
         return g;
@@ -552,6 +587,7 @@ var Path = (function (_super) {
         var _this = _super.call(this, s) || this;
         _this.data = data;
         _this.setup();
+        _this.material(PATH_MATERIAL());
         return _this;
     }
     Path.prototype.makeSvg = function (s) {
@@ -563,11 +599,10 @@ var Path = (function (_super) {
             var normTarget = add(i.p, mul(i.n, 10));
         }
         var line = s.polyline(posArray);
-        PATH_MATERIAL().apply(line);
+        this.material().apply(line);
         g.add(line);
         g.data("thing", this);
         g.attr({ "z-index": -1 });
-        PATH_MATERIAL.subscribe(function (mat) { mat.apply(line); }, this);
         return g;
     };
     return Path;
@@ -699,6 +734,26 @@ var Scene = (function (_super) {
         _this.renderPathDensity.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
         return _this;
     }
+    Scene.prototype.afterAddMaterial = function (element, data) {
+        console.log(data);
+        var outlinePickEl = element[1].querySelector('#jscolor-outline');
+        var outlinePicker = new jscolor(outlinePickEl, {
+            valueElement: null,
+            value: data.outlineColor().hex,
+        });
+        outlinePickEl.textContent = "";
+        outlinePicker.onFineChange = function () { data.outlineColor(Snap.getRGB("#" + outlinePicker.toString())); };
+        var fillPickEl = element[1].querySelector('#jscolor-fill');
+        var fillPicker = new jscolor(fillPickEl, {
+            valueElement: null,
+            value: data.fillColor().hex,
+        });
+        fillPicker.onFineChange = function () { data.fillColor(Snap.getRGB("#" + fillPicker.toString())); };
+        fillPickEl.textContent = "";
+    };
+    Scene.prototype.removeMaterial = function (mat) {
+        this.materials.remove(mat);
+    };
     Scene.prototype.sampleLight = function () {
         var lightIndex = Math.floor(this.lights().length * Math.random());
         var light = this.lights()[lightIndex];
@@ -708,7 +763,7 @@ var Scene = (function (_super) {
         var _this = this;
         for (var _i = 0, _a = this.paths; _i < _a.length; _i++) {
             var path = _a[_i];
-            path.svgElement().remove();
+            path.destroy();
         }
         this.paths = [];
         this.renderedPathsCount(0);
@@ -900,6 +955,9 @@ var ScriptedPathSampler = (function () {
             $("#code-footer").text("Sample Error:" + runtimeError.name + "-" + runtimeError.message);
             return result;
         }
+        if (!dirs) {
+            return result;
+        }
         for (var _i = 0, dirs_1 = dirs; _i < dirs_1.length; _i++) {
             var dir = dirs_1[_i];
             var r = {
@@ -964,6 +1022,10 @@ window.onload = function () {
     var pathSampler = new ScriptedPathSampler();
     pathSampler.sampleDir = sampleDirFunc;
     scene = new Scene(pathSampler, s);
+    scene.materials.push(DEFAULT_MATERIAL());
+    scene.materials.push(CAM_MATERIAL());
+    scene.materials.push(PATH_MATERIAL());
+    scene.materials.push(LIGHT_MATERIAL());
     var canvas = document.getElementById("density");
     var svgEl = document.getElementById("svg-container");
     var width = $(svgEl).width();
@@ -980,7 +1042,7 @@ window.onload = function () {
     canvas.height = height;
     scene.canvas = canvas.getContext("2d");
     var sampleCanvas = document.getElementById("sample-space");
-    sampleCanvas.width = $(sampleCanvas).width() * 2;
+    sampleCanvas.width = $(sampleCanvas).width() * 0.5;
     sampleCanvas.height = sampleCanvas.width;
     scene.sampleSpaceVis = new SampleSpaceVisualization(sampleCanvas.getContext("2d"));
     sampleCanvas.addEventListener("mousemove", function (e) {

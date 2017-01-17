@@ -173,6 +173,9 @@ function transformRay(ray: Ray, mat: Snap.Matrix) {
 }
 
 class Material {
+
+    static MATERIAL_MAP: any = {};
+
     outlineColor: KnockoutObservable<Snap.RGB>;
     fillColor: KnockoutObservable<Snap.RGB>;
 
@@ -181,27 +184,52 @@ class Material {
 
     outlineWidth: number;
 
-    linkedElements: Thing[];
+    linkedElements: KnockoutObservableArray<Snap.Element>;
 
-    constructor(outlineColor: KnockoutObservable<Snap.RGB>, fillColor: KnockoutObservable<Snap.RGB>, outlineOpacity: number, fillOpacity: number, outlineWidth: number) {
-        this.outlineColor = outlineColor;
-        this.fillColor = fillColor;
+    isLight: KnockoutObservable<boolean>;
+
+    name: KnockoutObservable<string>;
+
+    constructor(name: string, outlineColor: Snap.RGB, fillColor: Snap.RGB, outlineOpacity: number, fillOpacity: number, outlineWidth: number) {
+        this.outlineColor = ko.observable<Snap.RGB>(outlineColor);
+        this.fillColor = ko.observable<Snap.RGB>(fillColor);;
         this.outlineOpacity = outlineOpacity;
         this.fillOpacity = fillOpacity;
         this.outlineWidth = outlineWidth;
-        this.linkedElements = [];
+        this.linkedElements = ko.observableArray<Snap.Element>([]);
 
-        this.outlineColor.subscribe((newValue) => { this.update() });
-        this.fillColor.subscribe((newValue) => { this.update() });
+        this.isLight = ko.observable<boolean>(false);
+        this.name = ko.observable<string>(name);
+        this.outlineColor.subscribe((newValue) => { this.update() }, this);
+        this.fillColor.subscribe((newValue) => { this.update() }, this);
     }
 
     update() {
-        for (var el of this.linkedElements) {
-            this.apply(el.svgElement());
+        for (var el of this.linkedElements()) {
+            el.attr({
+                fill: this.fillOpacity > 0.01 ? this.fillColor().hex : "none",
+                stroke: this.outlineColor().hex,
+                strokeWidth: this.outlineWidth / (el.transform().localMatrix ? el.transform().localMatrix.split().scalex : 1),
+                "fill-opacity": this.fillOpacity,
+                "stroke-opacity": this.outlineOpacity,
+                //"vector-effect": "non-scaling-stroke",
+            });
         }
     }
 
     apply(el: Snap.Element) {
+
+        var elMat = <Material>(<any>el).mat;
+
+        if (elMat != this) {
+            if (elMat) {
+                elMat.linkedElements.remove(el);
+            }
+
+            (<any>el).mat = this;
+            this.linkedElements.push(el);
+        }
+
         el.attr({
             fill: this.fillOpacity > 0.01 ? this.fillColor().hex : "none",
             stroke: this.outlineColor().hex,
@@ -210,24 +238,23 @@ class Material {
             "stroke-opacity": this.outlineOpacity,
             //"vector-effect": "non-scaling-stroke",
         });
+
+        for (var child of el.children()) {
+            this.apply(child);
+        }
     }
 
     applyTo(el: Thing) {
-        if (el.material) {
-            var index = el.material().linkedElements.indexOf(el);
-            if (index != -1) el.material().linkedElements.splice(index, 1);
-        }
-        this.linkedElements.push(el);
         this.apply(el.svgElement());
     }
     
 }
 
 
-var DEFAULT_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(COLOR_DANGER, BACKGROUND_COLOR, 1.0, 0.25, 2));
-var CAM_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(CAM_OUTLINE, CAM_BACKGROUND_COLOR, 1.0, 0.75, 2));
-var PATH_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(COLOR_SUCCESS, BACKGROUND_COLOR, 1.0, 0.0, 2));
-var LIGHT_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material(COLOR_WARNING, BACKGROUND_COLOR, 1.0, 0.25, 0.5));
+var DEFAULT_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material("Default", COLOR_DANGER(), BACKGROUND_COLOR(), 1.0, 0.25, 2));
+var CAM_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material("Camera", CAM_OUTLINE(), CAM_BACKGROUND_COLOR(), 1.0, 0.75, 2));
+var PATH_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material("Path", COLOR_SUCCESS(), BACKGROUND_COLOR(), 1.0, 0.0, 2));
+var LIGHT_MATERIAL: KnockoutObservable<Material> = ko.observable<Material>(new Material("Light", COLOR_WARNING(), BACKGROUND_COLOR(), 1.0, 0.25, 0.5));
 
 class Thing {
     paper: Snap.Paper;
@@ -250,12 +277,22 @@ class Thing {
 
         this.cachedTransform = Snap.matrix();
         this.svgObserver = new MutationObserver((recs: MutationRecord[], inst: MutationObserver) => {
-            this.svgElement.valueHasMutated();
+            var transformMutated: boolean = false;
+            for (var rec of recs) {
+                if (rec.attributeName == "transform") {
+                    transformMutated = true;
+                    break;
+                }
+            }
+
+            if (transformMutated) {
+                this.svgElement.valueHasMutated();
+            }
         });
 
         this.svgElement = ko.observable<Snap.Element>();
 
-        this.material = DEFAULT_MATERIAL;
+        this.material = ko.observable<Material>(DEFAULT_MATERIAL());
 
 
         this.transform = ko.computed<Snap.Matrix>({
@@ -320,19 +357,24 @@ class Thing {
             },
             owner: this
         });
+    }
 
+    private destroySvg(el: Snap.Element) {
+        this.material().linkedElements.remove(el);
+        for (var child of el.children()) {
+            this.destroySvg(child);
+        }
+    }
 
+    destroy() {
+        this.destroySvg(this.svgElement());
+        this.svgElement().remove();
     }
 
     setup() {
         this.svgElement(this.makeSvg(this.paper));
 
-        this.material.subscribe((newValue: Material) => {
-            this.material().applyTo(this);
-        });
-
-        this.material = DEFAULT_MATERIAL;
-        this.material.subscribe((newValue) => { console.log("Test"); newValue.applyTo(this); }, this);
+        this.material.subscribe((newValue) => { newValue.applyTo(this); }, this);
 
         this.svgObserver.observe(this.svgElement().node, { attributes: true, subtree: true });
 
@@ -375,6 +417,7 @@ class Light extends Shape {
         this.setup();
         this.pos(pos);
         this.scale(new Vec2(rad, rad));
+        this.material( LIGHT_MATERIAL());
     }
 
     intersect(ray: Ray, result: Intersection) {
@@ -416,7 +459,7 @@ class Light extends Shape {
         var g = s.group();
 
         var circle = s.circle(0, 0, 1);
-        LIGHT_MATERIAL().apply(circle);
+        this.material().apply(circle);
         g.add(circle);
 
 
@@ -433,11 +476,11 @@ class Light extends Shape {
 
             var p = mul(transformPoint(xAxis, mat), 5);
             var line = s.line(0, 0, p.x, p.y);
-            LIGHT_MATERIAL().apply(line);
+            this.material().apply(line);
             g.add(line);
         }
 
-        LIGHT_MATERIAL().apply(g);
+        this.material().apply(g);
 
         g.data("thing", this);
         return g;
@@ -621,6 +664,7 @@ class Camera extends Thing {
         this.setup();
         this.pos(pos);
         this.rot(rot);
+        this.material( CAM_MATERIAL());
     }
 
     forward() {
@@ -657,7 +701,7 @@ class Camera extends Thing {
         var eyeRadDir = mul(dir, 25);
 
         var el = s.path(`M 0,0 ${eyeRadDir.x}, ${eyeRadDir.y} A 40, 40 1 0, 1 ${eyeRadDir.x}, ${-eyeRadDir.y} Z`);
-        CAM_MATERIAL().apply(el);
+        this.material().apply(el);
         g.add(el);
 
 
@@ -665,19 +709,19 @@ class Camera extends Thing {
 
         {
             var line = s.line(0, 0, dir.x, dir.y);
-            CAM_MATERIAL().apply(line);
+            this.material().apply(line);
             g.add(line);
         }
 
 
         {
             var line = s.line(0, 0, dir.x, -dir.y);
-            CAM_MATERIAL().apply(line);
+            this.material().apply(line);
             g.add(line);
         }
 
         var circle = s.ellipse(19, 0, 2, 4);
-        CAM_MATERIAL().apply(circle);
+        this.material().apply(circle);
         g.add(circle);
 
 
@@ -716,6 +760,7 @@ class Path extends Thing {
         super(s);
         this.data = data;
         this.setup();
+        this.material(PATH_MATERIAL());
     }
 
     makeSvg(s: Snap.Paper) {
@@ -733,15 +778,13 @@ class Path extends Thing {
         }
 
         var line = s.polyline(posArray);
-        PATH_MATERIAL().apply(line);
+        this.material().apply(line);
         g.add(line);
 
         g.data("thing", this);
 
         g.attr({ "z-index": -1 });
 
-        PATH_MATERIAL.subscribe(mat => { mat.apply(line); }, this);
-        
         return g;
     }
 }
@@ -898,6 +941,9 @@ class SampleSpaceVisualization {
     }
 }
 
+declare class jscolor {
+    constructor(el: any, opt:any);
+}
 
 class Scene extends Shape {
 
@@ -921,6 +967,27 @@ class Scene extends Shape {
     renderedPathsCount: KnockoutObservable<number>;
 
     lights: KnockoutObservableArray<Shape>;
+
+    afterAddMaterial(element: HTMLElement[], data: Material) {
+        console.log(data);
+        var outlinePickEl = element[1].querySelector('#jscolor-outline');
+        var outlinePicker = new jscolor(outlinePickEl, {
+            valueElement: null,
+            value: data.outlineColor().hex,
+            
+        });
+        outlinePickEl.textContent = "";
+        (<any>outlinePicker).onFineChange = () => { data.outlineColor(Snap.getRGB("#" + outlinePicker.toString()));  };
+
+
+        var fillPickEl = element[1].querySelector('#jscolor-fill');
+        var fillPicker = new jscolor(fillPickEl, {
+            valueElement: null,
+            value: data.fillColor().hex,
+        });
+        (<any>fillPicker).onFineChange = () => { data.fillColor(Snap.getRGB("#" + fillPicker.toString()));  };
+        fillPickEl.textContent = "";
+    }
 
 
     constructor(sampler : Sampler, s: Snap.Paper) {
@@ -946,6 +1013,10 @@ class Scene extends Shape {
         this.renderPathDensity.subscribe((newVal) => this.recalculatePaths(), this);
     }
 
+    removeMaterial(mat: Material) {
+        this.materials.remove(mat);
+    }
+
     sampleLight() {
         var lightIndex = Math.floor(this.lights().length * Math.random());
 
@@ -956,7 +1027,7 @@ class Scene extends Shape {
     recalculatePaths() {
 
         for (var path of this.paths) {
-            path.svgElement().remove();
+            path.destroy();
         }
 
         this.paths = [];
@@ -1188,6 +1259,9 @@ class ScriptedPathSampler implements Sampler {
             return result;
         }
 
+        if (!dirs) {
+            return result;
+        }
         
         for (var dir of dirs) {
             var r: Ray = {
@@ -1275,6 +1349,13 @@ window.onload = () => {
     var pathSampler = new ScriptedPathSampler();
     pathSampler.sampleDir = sampleDirFunc;
     scene = new Scene(pathSampler, s);
+
+
+    scene.materials.push(DEFAULT_MATERIAL());
+    scene.materials.push(CAM_MATERIAL());
+    scene.materials.push(PATH_MATERIAL());
+    scene.materials.push(LIGHT_MATERIAL());
+
     var canvas = <HTMLCanvasElement>document.getElementById("density");
     var svgEl = document.getElementById("svg-container");
     var width = $(svgEl).width();
@@ -1296,7 +1377,7 @@ window.onload = () => {
     var sampleCanvas = <HTMLCanvasElement>document.getElementById("sample-space");
 
 
-    sampleCanvas.width = $(sampleCanvas).width() * 2;
+    sampleCanvas.width = $(sampleCanvas).width() * 0.5;
     sampleCanvas.height = sampleCanvas.width;
 
     scene.sampleSpaceVis = new SampleSpaceVisualization(<CanvasRenderingContext2D>sampleCanvas.getContext("2d"));

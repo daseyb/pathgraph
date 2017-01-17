@@ -45,6 +45,7 @@
     <Content Include="Scripts\canvas.hdr.min.js" />
     <Content Include="Scripts\jquery-1.9.1.js" />
     <Content Include="Scripts\jquery-1.9.1.min.js" />
+    <Content Include="Scripts\jscolor.min.js" />
     <Content Include="Scripts\snap\snap.svg-min.js" />
     <Content Include="Scripts\snap\snap.svg.js" />
     <Content Include="web.config" />
