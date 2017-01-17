@@ -619,6 +619,7 @@ var SampleSpaceVisualization = (function () {
     function SampleSpaceVisualization(canvas) {
         this.canvas = canvas;
         this.selectedCoordinates = ko.observable(new Vec2(0.5, 0.5));
+        this.drawLabels = ko.observable(true);
     }
     SampleSpaceVisualization.prototype.getPath = function (scene, cam, coord) {
         var path = new PathData();
@@ -702,16 +703,18 @@ var SampleSpaceVisualization = (function () {
             }
         }
         this.canvas.putImageData(newDataObj, 0, 0);
-        this.canvas.lineWidth = 2;
-        this.canvas.strokeStyle = COLOR_INFO().hex;
-        this.canvas.beginPath();
-        this.canvas.moveTo(this.selectedCoordinates().x * width, 0);
-        this.canvas.lineTo(this.selectedCoordinates().x * width, height);
-        this.canvas.stroke();
-        this.canvas.strokeStyle = COLOR_WARNING().hex;
-        this.canvas.beginPath();
-        this.canvas.arc(this.selectedCoordinates().x * width, this.selectedCoordinates().y * height, 2, 0, 360);
-        this.canvas.stroke();
+        if (this.drawLabels()) {
+            this.canvas.lineWidth = 2;
+            this.canvas.strokeStyle = COLOR_INFO().hex;
+            this.canvas.beginPath();
+            this.canvas.moveTo(this.selectedCoordinates().x * width, 0);
+            this.canvas.lineTo(this.selectedCoordinates().x * width, height);
+            this.canvas.stroke();
+            this.canvas.strokeStyle = COLOR_WARNING().hex;
+            this.canvas.beginPath();
+            this.canvas.arc(this.selectedCoordinates().x * width, this.selectedCoordinates().y * height, 2, 0, 360);
+            this.canvas.stroke();
+        }
     };
     return SampleSpaceVisualization;
 }());
@@ -722,6 +725,7 @@ var Scene = (function (_super) {
         _this.visualizePrimarySampleSpace = ko.observable(false);
         _this.renderedPathsCount = ko.observable(0);
         _this.renderPathDensity = ko.observable(false);
+        _this.densityFullResolution = ko.observable(false);
         _this.sampler = sampler;
         _this.shapes = ko.observableArray([]);
         _this.lights = ko.observableArray([]);
@@ -734,6 +738,8 @@ var Scene = (function (_super) {
         sampleDirFunc.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
         _this.svgElement.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
         _this.renderPathDensity.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
+        _this.visualizePrimarySampleSpace.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
+        _this.densityFullResolution.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
         return _this;
     }
     Scene.prototype.afterAddMaterial = function (element, data) {
@@ -787,6 +793,9 @@ var Scene = (function (_super) {
             }
         }
         if (this.visualizePrimarySampleSpace()) {
+            var sampleCanvas = this.sampleSpaceVis.canvas.canvas;
+            sampleCanvas.width = $(sampleCanvas).width() * (this.densityFullResolution() ? 1 : 0.5);
+            sampleCanvas.height = sampleCanvas.width;
             this.sampleSpaceVis.update(this, this.cameras()[0]);
             var p = this.sampleSpaceVis.getPath(this, this.cameras()[0], this.sampleSpaceVis.selectedCoordinates());
             var path = new Path(p, this.paper);
@@ -1047,6 +1056,7 @@ window.onload = function () {
     sampleCanvas.width = $(sampleCanvas).width();
     sampleCanvas.height = sampleCanvas.width;
     scene.sampleSpaceVis = new SampleSpaceVisualization(sampleCanvas.getContext("2d"));
+    scene.sampleSpaceVis.drawLabels.subscribe(function (newVal) { return scene.recalculatePaths(); }, scene);
     sampleCanvas.addEventListener("mousemove", function (e) {
         if (e.button == 0 && !e.shiftKey)
             return;

@@ -222,6 +222,10 @@
                     <div class="panel-heading">
                         <h2 class="panel-title"><a data-toggle="collapse" href="#sample-space-body">Sample Space</a></h2>
                     </div>
+                    <div class="panel-body">
+                        <label><input type="checkbox" data-bind="checked: densityFullResolution">Full Resolution</label>
+                        <label><input type="checkbox" data-bind="checked: sampleSpaceVis.drawLabels">Draw Labels</label>
+                    </div>
                     <div id="sample-space-body" class="panel-collapse collapse">
                         <canvas id="sample-space"></canvas>
                     </div>

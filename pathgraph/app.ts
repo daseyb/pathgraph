@@ -807,11 +807,13 @@ function setRotation(mat: Snap.Matrix, r: number) {
 class SampleSpaceVisualization {
     canvas: CanvasRenderingContext2D;
 
-    selectedCoordinates: KnockoutObservable< Vec2>;
+    selectedCoordinates: KnockoutObservable<Vec2>;
+    drawLabels: KnockoutObservable<boolean>;
 
     constructor(canvas: CanvasRenderingContext2D) {
         this.canvas = canvas;
         this.selectedCoordinates = ko.observable<Vec2>(new Vec2(0.5, 0.5));
+        this.drawLabels = ko.observable<boolean>(true);
     }
 
     getPath(scene: Scene, cam: Camera, coord: Vec2) {
@@ -929,17 +931,19 @@ class SampleSpaceVisualization {
 
         this.canvas.putImageData(newDataObj, 0, 0);
 
-        this.canvas.lineWidth = 2;
-        this.canvas.strokeStyle = COLOR_INFO().hex;
-        this.canvas.beginPath();
-        this.canvas.moveTo(this.selectedCoordinates().x * width, 0);
-        this.canvas.lineTo(this.selectedCoordinates().x * width, height);
-        this.canvas.stroke();
+        if (this.drawLabels()) {
+            this.canvas.lineWidth = 2;
+            this.canvas.strokeStyle = COLOR_INFO().hex;
+            this.canvas.beginPath();
+            this.canvas.moveTo(this.selectedCoordinates().x * width, 0);
+            this.canvas.lineTo(this.selectedCoordinates().x * width, height);
+            this.canvas.stroke();
 
-        this.canvas.strokeStyle = COLOR_WARNING().hex;
-        this.canvas.beginPath();
-        this.canvas.arc(this.selectedCoordinates().x * width, this.selectedCoordinates().y * height, 2, 0, 360);
-        this.canvas.stroke();
+            this.canvas.strokeStyle = COLOR_WARNING().hex;
+            this.canvas.beginPath();
+            this.canvas.arc(this.selectedCoordinates().x * width, this.selectedCoordinates().y * height, 2, 0, 360);
+            this.canvas.stroke();
+        }
     }
 }
 
@@ -951,6 +955,7 @@ class Scene extends Shape {
 
     renderPathDensity: KnockoutObservable<boolean>;
     visualizePrimarySampleSpace: KnockoutObservable<boolean>;
+    densityFullResolution: KnockoutObservable<boolean>;
 
     sampleSpaceVis: SampleSpaceVisualization;
 
@@ -998,6 +1003,7 @@ class Scene extends Shape {
         this.visualizePrimarySampleSpace = ko.observable<boolean>(false);
         this.renderedPathsCount = ko.observable<number>(0);
         this.renderPathDensity = ko.observable<boolean>(false);
+        this.densityFullResolution = ko.observable<boolean>(false);
         this.sampler = sampler;
         this.shapes = ko.observableArray<Shape>([]);
         this.lights = ko.observableArray<Shape>([]);
@@ -1013,6 +1019,8 @@ class Scene extends Shape {
 
         this.svgElement.subscribe((newVal) => this.recalculatePaths(), this);
         this.renderPathDensity.subscribe((newVal) => this.recalculatePaths(), this);
+        this.visualizePrimarySampleSpace.subscribe((newVal) => this.recalculatePaths(), this);
+        this.densityFullResolution.subscribe((newVal) => this.recalculatePaths(), this);
     }
 
     removeMaterial(mat: Material) {
@@ -1051,6 +1059,12 @@ class Scene extends Shape {
         }
 
         if (this.visualizePrimarySampleSpace()) {
+
+            var sampleCanvas = this.sampleSpaceVis.canvas.canvas;
+            sampleCanvas.width = $(sampleCanvas).width() * (this.densityFullResolution() ? 1 : 0.5) ;
+            sampleCanvas.height = sampleCanvas.width;
+
+
             this.sampleSpaceVis.update(this, this.cameras()[0]);
 
             var p = this.sampleSpaceVis.getPath(this, this.cameras()[0], this.sampleSpaceVis.selectedCoordinates());
@@ -1378,11 +1392,14 @@ window.onload = () => {
 
     var sampleCanvas = <HTMLCanvasElement>document.getElementById("sample-space");
 
-
     sampleCanvas.width = $(sampleCanvas).width();
     sampleCanvas.height = sampleCanvas.width;
 
     scene.sampleSpaceVis = new SampleSpaceVisualization(<CanvasRenderingContext2D>sampleCanvas.getContext("2d"));
+
+    scene.sampleSpaceVis.drawLabels.subscribe((newVal) => scene.recalculatePaths(), scene);
+
+
     sampleCanvas.addEventListener("mousemove", (e: MouseEvent) => {
         if (e.button == 0 && !e.shiftKey) return;
         var x = (e.pageX - sampleCanvas.offsetLeft) / sampleCanvas.offsetWidth;
