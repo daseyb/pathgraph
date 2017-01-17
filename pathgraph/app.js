@@ -686,16 +686,18 @@ var SampleSpaceVisualization = (function () {
                 };
                 var secondaryHit = new Intersection();
                 var didHitSecondary = scene.intersect(secondaryRay, secondaryHit);
+                var primHitCol = primaryHit.shape.material().outlineColor();
                 if (!didHitSecondary) {
-                    newData[pixelIndex + 0] = 100;
-                    newData[pixelIndex + 1] = 100;
-                    newData[pixelIndex + 2] = 100;
+                    newData[pixelIndex + 0] = primHitCol.r;
+                    newData[pixelIndex + 1] = primHitCol.g;
+                    newData[pixelIndex + 2] = primHitCol.b;
                     newData[pixelIndex + 3] = 255;
                     continue;
                 }
-                newData[pixelIndex + 0] = 200;
-                newData[pixelIndex + 1] = 200;
-                newData[pixelIndex + 2] = 200;
+                var secHitCol = secondaryHit.shape.material().outlineColor();
+                newData[pixelIndex + 0] = 255 * (secHitCol.r / 255 * primHitCol.r / 255);
+                newData[pixelIndex + 1] = 255 * (secHitCol.g / 255 * primHitCol.g / 255);
+                newData[pixelIndex + 2] = 255 * (secHitCol.b / 255 * primHitCol.b / 255);
                 newData[pixelIndex + 3] = 255;
             }
         }
