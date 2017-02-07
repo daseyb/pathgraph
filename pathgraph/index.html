@@ -33,6 +33,18 @@
                                 <br />
                                 <label><input type="checkbox" data-bind="checked: visualizePrimarySampleSpace">Visualize Sample x Path Space</label>
                             </div>
+
+                            <label>
+                                Sampler: 
+                                <select data-bind="options: availableSamplers,
+                                                           optionsText: 'name',
+                                                           value: sampler,
+                                                           optionsCaption: 'Choose...'"></select>
+                                
+                            </label>
+                            <label>Max Depth: <input type="number" data-bind="value: maxDepth" /></label>
+                            <label>Max Density Samples: <input type="number" data-bind="value: maxDensitySamples" /></label>
+                            <label>Path Density Multiplier: <input type="range" min="0" max="3" step="0.01" data-bind="value: pathDensityMultiplier" /></label>
                         </div>
                     </div>
                 </div>

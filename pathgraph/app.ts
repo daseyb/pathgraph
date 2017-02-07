@@ -10,7 +10,7 @@ var COLOR_DANGER = ko.observable<Snap.RGB>(Snap.getRGB("#E74C3C"));
 
 var BACKGROUND_COLOR = ko.observable<Snap.RGB>(Snap.getRGB("rgb(200, 200, 200)"));
 var CAM_BACKGROUND_COLOR = ko.observable<Snap.RGB>(Snap.getRGB("rgb(255, 255, 255)"));
-var CAM_OUTLINE = COLOR_PRIMARY;// ko.observable<Snap.RGB>(Snap.getRGB("rgb(60, 60, 60)"));
+var CAM_OUTLINE = COLOR_PRIMARY;
 
 class Vec2 {
     x: number;
@@ -22,6 +22,10 @@ class Vec2 {
 
     toString() {
         return `(${this.x}, ${this.y})`;
+    }
+
+    clone() {
+        return new Vec2(this.x, this.y);
     }
 }
 
@@ -125,6 +129,10 @@ class Ray {
     constructor(o: Vec2, d: Vec2) {
         this.o = o;
         this.d = d;
+    }
+
+    clone() {
+        return new Ray(this.o.clone(), this.d.clone());
     }
 }
 
@@ -790,6 +798,7 @@ class Path extends Thing {
 }
 
 interface Sampler {
+    name: string;
     tracePath(ray: Ray, depth: number, scene: Scene): PathData[];
 }
 
@@ -824,10 +833,7 @@ class SampleSpaceVisualization {
 
         var dir = cam.sampleDir(coord.x);
 
-        var primaryRay: Ray = {
-            o: add(cam.pos(), mul(dir, 21)),
-            d: dir
-        };
+        var primaryRay: Ray = new Ray(add(cam.pos(), mul(dir, 21)), dir);
 
         path.points.push({ p: primaryRay.o, n: primaryRay.d, shape: null });
 
@@ -846,10 +852,7 @@ class SampleSpaceVisualization {
         setRotation(mat, -90 + 180 * coord.y);
         secondaryDir = transformDir(secondaryDir, mat);
 
-        var secondaryRay: Ray = {
-            o: add(primaryHit.p, mul(secondaryDir, 1)),
-            d: secondaryDir
-        };
+        var secondaryRay: Ray = new Ray(add(primaryHit.p, mul(secondaryDir, 1)), secondaryDir);
 
         var secondaryHit = new Intersection();
 
@@ -877,10 +880,7 @@ class SampleSpaceVisualization {
         for (var x = 0; x < width; x++) {
             var dir = cam.sampleDir(x / width);
 
-            var primaryRay: Ray = {
-                o: cam.pos(),
-                d: dir
-            };
+            var primaryRay: Ray = new Ray(cam.pos(), dir);
 
             var primaryHit = new Intersection();
 
@@ -903,10 +903,7 @@ class SampleSpaceVisualization {
                 setRotation(mat, -90 + 180 * y / height);
                 secondaryDir = transformDir(secondaryDir, mat);
 
-                var secondaryRay: Ray = {
-                    o: add(primaryHit.p, mul(secondaryDir, 1)),
-                    d: secondaryDir
-                };
+                var secondaryRay: Ray = new Ray(add(primaryHit.p, mul(secondaryDir, 1)), secondaryDir);
 
                 var secondaryHit = new Intersection();
 
@@ -967,13 +964,19 @@ class Scene extends Shape {
 
     materials: KnockoutObservableArray<Material>;
 
-    sampler: Sampler;
+    sampler:  KnockoutObservable<Sampler>;
 
     canvas: CanvasRenderingContext2D;
 
     renderedPathsCount: KnockoutObservable<number>;
 
     lights: KnockoutObservableArray<Shape>;
+
+    availableSamplers: KnockoutObservableArray<Sampler>;
+
+    maxDepth: KnockoutObservable<number>;
+    pathDensityMultiplier: KnockoutObservable<number>;
+    maxDensitySamples: KnockoutObservable<number>;
 
     afterAddMaterial(element: HTMLElement[], data: Material) {
         console.log(data);
@@ -999,12 +1002,14 @@ class Scene extends Shape {
 
     constructor(sampler : Sampler, s: Snap.Paper) {
         super(s);
-
+        this.maxDensitySamples = ko.observable<number>(50000);
+        this.pathDensityMultiplier = ko.observable<number>(1);
+        this.maxDepth = ko.observable<number>(3);
         this.visualizePrimarySampleSpace = ko.observable<boolean>(false);
         this.renderedPathsCount = ko.observable<number>(0);
         this.renderPathDensity = ko.observable<boolean>(false);
         this.densityFullResolution = ko.observable<boolean>(false);
-        this.sampler = sampler;
+        this.sampler = ko.observable<Sampler>(sampler);
         this.shapes = ko.observableArray<Shape>([]);
         this.lights = ko.observableArray<Shape>([]);
         this.paths = [];
@@ -1021,6 +1026,10 @@ class Scene extends Shape {
         this.renderPathDensity.subscribe((newVal) => this.recalculatePaths(), this);
         this.visualizePrimarySampleSpace.subscribe((newVal) => this.recalculatePaths(), this);
         this.densityFullResolution.subscribe((newVal) => this.recalculatePaths(), this);
+        this.maxDepth.subscribe((newVal) => this.recalculatePaths(), this);
+        this.sampler.subscribe((newVal) => this.recalculatePaths(), this);
+
+        this.availableSamplers = ko.observableArray<Sampler>([this.sampler()]);
     }
 
     removeMaterial(mat: Material) {
@@ -1050,7 +1059,7 @@ class Scene extends Shape {
             for (var cam of this.cameras()) {
                 var fwd = cam.forward();
                 var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
-                var newPaths = this.sampler.tracePath(startRay, 3, this);
+                var newPaths = this.sampler().tracePath(startRay, this.maxDepth(), this);
                 for (var p of newPaths) {
                     var path = new Path(p, this.paper);
                     this.paths.push(path);
@@ -1087,18 +1096,18 @@ class Scene extends Shape {
             var renderPaths: PathData[] = [];
 
             for (var i = 0; i < 4; i++) {
-                var newPaths = this.sampler.tracePath(startRay, 4, this);
+                var newPaths = this.sampler().tracePath(startRay.clone(), this.maxDepth(), this);
                 for (var p of newPaths) {
                     renderPaths.push(p);
                 }
             }
 
-            this.renderedPathsCount(this.renderedPathsCount() + 10);
+            this.renderedPathsCount(this.renderedPathsCount() + 4);
 
             this.canvas.strokeStyle = PATH_MATERIAL().outlineColor().hex;
 
             this.canvas.lineWidth = 0.4;
-            this.canvas.globalAlpha = 0.02;
+            this.canvas.globalAlpha = 0.02 * this.pathDensityMultiplier();
 
             for (var p of renderPaths) {
                 this.canvas.strokeStyle = p.properties.has("HitLight") ? COLOR_WARNING().hex : COLOR_INFO().hex;
@@ -1112,7 +1121,7 @@ class Scene extends Shape {
             }
         }
 
-        if (this.renderedPathsCount() < 50000) {
+        if (this.renderedPathsCount() < this.maxDensitySamples()) {
             window.requestAnimationFrame(() => this.updateDensity());
         }
     }
@@ -1166,9 +1175,7 @@ class Scene extends Shape {
     }
 
     test(a: Vec2, b: Vec2) {
-        var r: Ray = {
-            o: a, d: normalize(sub(b, a))
-        };
+        var r: Ray = new Ray(a, normalize(sub(b, a)));
 
         var res: Intersection = new Intersection();
         if (!this.intersect(r, res)) {
@@ -1192,6 +1199,8 @@ class Scene extends Shape {
 
 
 class SinglePathSampler implements Sampler {
+    name: string = "Simple";
+
     tracePath(ray: Ray, depth: number, scene: Scene): PathData[] {
         var path: PathData = new PathData();
         path.points = [];
@@ -1225,11 +1234,104 @@ class SinglePathSampler implements Sampler {
     }
 }
 
+class OffsetPathSampler implements Sampler {
+
+    name: string = "Offset";
+
+    tracePath(ray: Ray, depth: number, scene: Scene): PathData[] {
+
+        if (depth < 0) return [];
+
+        var mat = Snap.matrix();
+        setRotation(mat, -5);
+
+        var offsetRay: Ray = new Ray(ray.o.clone(), transformDir(ray.d, mat));
+
+        var basePath: PathData = new PathData();
+        var result: PathData[] = [];
+
+        basePath.properties = new Set<string>();
+        basePath.points = [];
+        basePath.points.push({ p: ray.o, n: ray.d, shape: null });
+
+        for (var i = 0; i < depth; i++) {
+            var intersect: Intersection = new Intersection();
+
+            if (!scene.intersect(ray, intersect)) {
+                basePath.points.push({ p: add(ray.o, mul(ray.d, 20000)), n: ray.d, shape: null });
+                break;
+            }
+
+            basePath.points.push(intersect);
+
+            if (intersect.shape instanceof Light) {
+                break;
+            }
+
+            ray.o = intersect.p;
+            ray.d = cosineSampleHemisphere(intersect.n);
+            ray.o = add(ray.o, mul(ray.d, 0.1));
+        }
+
+        var offsetPath: PathData = new PathData();
+        result.push(offsetPath);
+
+        ray = offsetRay;
+
+        offsetPath.properties = new Set<string>();
+        offsetPath.points = [];
+        offsetPath.points.push({ p: ray.o, n: ray.d, shape: null });
+
+        var intersect: Intersection = new Intersection();
+
+        if (!scene.intersect(ray, intersect)) {
+            offsetPath.points.push({ p: add(ray.o, mul(ray.d, 20000)), n: ray.d, shape: null });
+        } else {
+            offsetPath.points.push(intersect);
+            if (basePath.points.length > 2 && scene.test(add(intersect.p, mul(intersect.n, 1)), basePath.points[2].p)) {
+                for (var j = 2; j < basePath.points.length; j++) {
+                    offsetPath.points.push(basePath.points[j]);
+                }
+            }
+        }
+
+        basePath.properties = new Set<string>();
+        basePath.points = [];
+        basePath.points.push({ p: ray.o, n: ray.d, shape: null });
+
+        for (var i = 0; i < depth; i++) {
+            var intersect: Intersection = new Intersection();
+
+            if (!scene.intersect(ray, intersect)) {
+                basePath.points.push({ p: add(ray.o, mul(ray.d, 20000)), n: ray.d, shape: null });
+                break;
+            }
+
+            basePath.points.push(intersect);
+
+            if (intersect.shape instanceof Light) {
+                break;
+            }
+
+            ray.o = intersect.p;
+            ray.d = cosineSampleHemisphere(intersect.n);
+            ray.o = add(ray.o, mul(ray.d, 0.1));
+        }
+
+        result.push(basePath);
+
+        offsetPath.properties.add("HitLight");
+
+        return result;
+    }
+}
+
 
 var sampleDirFunc = ko.observable<(intersect: Intersection, ray: Ray, scene: Scene) => Vec2[]>();
 
 class ScriptedPathSampler implements Sampler {
 
+    name: string = "Scripted";
     sampleDir: KnockoutObservable<(intersect: Intersection, ray: Ray, scene: Scene) => Vec2[]>;
 
     tracePath(ray: Ray, depth: number, scene: Scene): PathData[] {
@@ -1280,10 +1382,7 @@ class ScriptedPathSampler implements Sampler {
         }
         
         for (var dir of dirs) {
-            var r: Ray = {
-                o: add(intersect.p, mul(dir, 1)),
-                d: dir
-            };
+            var r: Ray = new Ray(add(intersect.p, mul(dir, 1)), dir);
 
             var newPaths: PathData[];
 
@@ -1399,6 +1498,7 @@ window.onload = () => {
 
     scene.sampleSpaceVis.drawLabels.subscribe((newVal) => scene.recalculatePaths(), scene);
 
+    scene.availableSamplers.push(new OffsetPathSampler(), new SinglePathSampler());
 
     sampleCanvas.addEventListener("mousemove", (e: MouseEvent) => {
         if (e.button == 0 && !e.shiftKey) return;
@@ -1418,7 +1518,7 @@ window.onload = () => {
     scene.addShape(new Light(new Vec2(300, 200), 4, s));
 
     var deformedCircle = new Circle(new Vec2(250, 150), 30, s);
-    deformedCircle.scale(new Vec2(30.0, 10.0));
+    deformedCircle.scale(new Vec2(30.0, 30.0));
     deformedCircle.rot(0);
     scene.addShape(deformedCircle);
     scene.addShape(new Box(new Vec2(250, 50), new Vec2(20, 40), s));

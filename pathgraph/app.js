@@ -14,7 +14,7 @@ var COLOR_WARNING = ko.observable(Snap.getRGB("#F39C12"));
 var COLOR_DANGER = ko.observable(Snap.getRGB("#E74C3C"));
 var BACKGROUND_COLOR = ko.observable(Snap.getRGB("rgb(200, 200, 200)"));
 var CAM_BACKGROUND_COLOR = ko.observable(Snap.getRGB("rgb(255, 255, 255)"));
-var CAM_OUTLINE = COLOR_PRIMARY; // ko.observable<Snap.RGB>(Snap.getRGB("rgb(60, 60, 60)"));
+var CAM_OUTLINE = COLOR_PRIMARY;
 var Vec2 = (function () {
     function Vec2(x, y) {
         this.x = x;
@@ -22,6 +22,9 @@ var Vec2 = (function () {
     }
     Vec2.prototype.toString = function () {
         return "(" + this.x + ", " + this.y + ")";
+    };
+    Vec2.prototype.clone = function () {
+        return new Vec2(this.x, this.y);
     };
     return Vec2;
 }());
@@ -98,6 +101,9 @@ var Ray = (function () {
         this.o = o;
         this.d = d;
     }
+    Ray.prototype.clone = function () {
+        return new Ray(this.o.clone(), this.d.clone());
+    };
     return Ray;
 }());
 function sign(f) {
@@ -626,10 +632,7 @@ var SampleSpaceVisualization = (function () {
         path.points = [];
         path.properties = new Set();
         var dir = cam.sampleDir(coord.x);
-        var primaryRay = {
-            o: add(cam.pos(), mul(dir, 21)),
-            d: dir
-        };
+        var primaryRay = new Ray(add(cam.pos(), mul(dir, 21)), dir);
         path.points.push({ p: primaryRay.o, n: primaryRay.d, shape: null });
         var primaryHit = new Intersection();
         var didHitPrimary = scene.intersect(primaryRay, primaryHit);
@@ -642,10 +645,7 @@ var SampleSpaceVisualization = (function () {
         var mat = Snap.matrix();
         setRotation(mat, -90 + 180 * coord.y);
         secondaryDir = transformDir(secondaryDir, mat);
-        var secondaryRay = {
-            o: add(primaryHit.p, mul(secondaryDir, 1)),
-            d: secondaryDir
-        };
+        var secondaryRay = new Ray(add(primaryHit.p, mul(secondaryDir, 1)), secondaryDir);
         var secondaryHit = new Intersection();
         var didHitSecondary = scene.intersect(secondaryRay, secondaryHit);
         if (!didHitSecondary) {
@@ -663,10 +663,7 @@ var SampleSpaceVisualization = (function () {
         var mat = Snap.matrix();
         for (var x = 0; x < width; x++) {
             var dir = cam.sampleDir(x / width);
-            var primaryRay = {
-                o: cam.pos(),
-                d: dir
-            };
+            var primaryRay = new Ray(cam.pos(), dir);
             var primaryHit = new Intersection();
             var didHitPrimary = scene.intersect(primaryRay, primaryHit);
             for (var y = 0; y < height; y++) {
@@ -681,10 +678,7 @@ var SampleSpaceVisualization = (function () {
                 var secondaryDir = primaryHit.n;
                 setRotation(mat, -90 + 180 * y / height);
                 secondaryDir = transformDir(secondaryDir, mat);
-                var secondaryRay = {
-                    o: add(primaryHit.p, mul(secondaryDir, 1)),
-                    d: secondaryDir
-                };
+                var secondaryRay = new Ray(add(primaryHit.p, mul(secondaryDir, 1)), secondaryDir);
                 var secondaryHit = new Intersection();
                 var didHitSecondary = scene.intersect(secondaryRay, secondaryHit);
                 var primHitCol = primaryHit.shape.material().outlineColor();
@@ -722,11 +716,14 @@ var Scene = (function (_super) {
     __extends(Scene, _super);
     function Scene(sampler, s) {
         var _this = _super.call(this, s) || this;
+        _this.maxDensitySamples = ko.observable(50000);
+        _this.pathDensityMultiplier = ko.observable(1);
+        _this.maxDepth = ko.observable(3);
         _this.visualizePrimarySampleSpace = ko.observable(false);
         _this.renderedPathsCount = ko.observable(0);
         _this.renderPathDensity = ko.observable(false);
         _this.densityFullResolution = ko.observable(false);
-        _this.sampler = sampler;
+        _this.sampler = ko.observable(sampler);
         _this.shapes = ko.observableArray([]);
         _this.lights = ko.observableArray([]);
         _this.paths = [];
@@ -740,6 +737,9 @@ var Scene = (function (_super) {
         _this.renderPathDensity.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
         _this.visualizePrimarySampleSpace.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
         _this.densityFullResolution.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
+        _this.maxDepth.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
+        _this.sampler.subscribe(function (newVal) { return _this.recalculatePaths(); }, _this);
+        _this.availableSamplers = ko.observableArray([_this.sampler()]);
         return _this;
     }
     Scene.prototype.afterAddMaterial = function (element, data) {
@@ -784,7 +784,7 @@ var Scene = (function (_super) {
                 var cam = _c[_b];
                 var fwd = cam.forward();
                 var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
-                var newPaths = this.sampler.tracePath(startRay, 3, this);
+                var newPaths = this.sampler().tracePath(startRay, this.maxDepth(), this);
                 for (var _d = 0, newPaths_1 = newPaths; _d < newPaths_1.length; _d++) {
                     var p = newPaths_1[_d];
                     var path = new Path(p, this.paper);
@@ -813,16 +813,16 @@ var Scene = (function (_super) {
             var startRay = new Ray(add(cam.pos(), mul(fwd, 21)), fwd);
             var renderPaths = [];
             for (var i = 0; i < 4; i++) {
-                var newPaths = this.sampler.tracePath(startRay, 4, this);
+                var newPaths = this.sampler().tracePath(startRay.clone(), this.maxDepth(), this);
                 for (var _b = 0, newPaths_2 = newPaths; _b < newPaths_2.length; _b++) {
                     var p = newPaths_2[_b];
                     renderPaths.push(p);
                 }
             }
-            this.renderedPathsCount(this.renderedPathsCount() + 10);
+            this.renderedPathsCount(this.renderedPathsCount() + 4);
             this.canvas.strokeStyle = PATH_MATERIAL().outlineColor().hex;
             this.canvas.lineWidth = 0.4;
-            this.canvas.globalAlpha = 0.02;
+            this.canvas.globalAlpha = 0.02 * this.pathDensityMultiplier();
             for (var _c = 0, renderPaths_1 = renderPaths; _c < renderPaths_1.length; _c++) {
                 var p = renderPaths_1[_c];
                 this.canvas.strokeStyle = p.properties.has("HitLight") ? COLOR_WARNING().hex : COLOR_INFO().hex;
@@ -835,7 +835,7 @@ var Scene = (function (_super) {
                 this.canvas.stroke();
             }
         }
-        if (this.renderedPathsCount() < 50000) {
+        if (this.renderedPathsCount() < this.maxDensitySamples()) {
             window.requestAnimationFrame(function () { return _this.updateDensity(); });
         }
     };
@@ -884,9 +884,7 @@ var Scene = (function (_super) {
         return hitSomething;
     };
     Scene.prototype.test = function (a, b) {
-        var r = {
-            o: a, d: normalize(sub(b, a))
-        };
+        var r = new Ray(a, normalize(sub(b, a)));
         var res = new Intersection();
         if (!this.intersect(r, res)) {
             return false;
@@ -906,6 +904,7 @@ var Scene = (function (_super) {
 }(Shape));
 var SinglePathSampler = (function () {
     function SinglePathSampler() {
+        this.name = "Simple";
     }
     SinglePathSampler.prototype.tracePath = function (ray, depth, scene) {
         var path = new PathData();
@@ -931,9 +930,80 @@ var SinglePathSampler = (function () {
     };
     return SinglePathSampler;
 }());
+var OffsetPathSampler = (function () {
+    function OffsetPathSampler() {
+        this.name = "Offset";
+    }
+    OffsetPathSampler.prototype.tracePath = function (ray, depth, scene) {
+        if (depth < 0)
+            return [];
+        var mat = Snap.matrix();
+        setRotation(mat, -5);
+        var offsetRay = new Ray(ray.o.clone(), transformDir(ray.d, mat));
+        var basePath = new PathData();
+        var result = [];
+        basePath.properties = new Set();
+        basePath.points = [];
+        basePath.points.push({ p: ray.o, n: ray.d, shape: null });
+        for (var i = 0; i < depth; i++) {
+            var intersect = new Intersection();
+            if (!scene.intersect(ray, intersect)) {
+                basePath.points.push({ p: add(ray.o, mul(ray.d, 20000)), n: ray.d, shape: null });
+                break;
+            }
+            basePath.points.push(intersect);
+            if (intersect.shape instanceof Light) {
+                break;
+            }
+            ray.o = intersect.p;
+            ray.d = cosineSampleHemisphere(intersect.n);
+            ray.o = add(ray.o, mul(ray.d, 0.1));
+        }
+        var offsetPath = new PathData();
+        result.push(offsetPath);
+        ray = offsetRay;
+        offsetPath.properties = new Set();
+        offsetPath.points = [];
+        offsetPath.points.push({ p: ray.o, n: ray.d, shape: null });
+        var intersect = new Intersection();
+        if (!scene.intersect(ray, intersect)) {
+            offsetPath.points.push({ p: add(ray.o, mul(ray.d, 20000)), n: ray.d, shape: null });
+        }
+        else {
+            offsetPath.points.push(intersect);
+            if (basePath.points.length > 2 && scene.test(add(intersect.p, mul(intersect.n, 1)), basePath.points[2].p)) {
+                for (var j = 2; j < basePath.points.length; j++) {
+                    offsetPath.points.push(basePath.points[j]);
+                }
+            }
+        }
+        basePath.properties = new Set();
+        basePath.points = [];
+        basePath.points.push({ p: ray.o, n: ray.d, shape: null });
+        for (var i = 0; i < depth; i++) {
+            var intersect = new Intersection();
+            if (!scene.intersect(ray, intersect)) {
+                basePath.points.push({ p: add(ray.o, mul(ray.d, 20000)), n: ray.d, shape: null });
+                break;
+            }
+            basePath.points.push(intersect);
+            if (intersect.shape instanceof Light) {
+                break;
+            }
+            ray.o = intersect.p;
+            ray.d = cosineSampleHemisphere(intersect.n);
+            ray.o = add(ray.o, mul(ray.d, 0.1));
+        }
+        result.push(basePath);
+        offsetPath.properties.add("HitLight");
+        return result;
+    };
+    return OffsetPathSampler;
+}());
 var sampleDirFunc = ko.observable();
 var ScriptedPathSampler = (function () {
     function ScriptedPathSampler() {
+        this.name = "Scripted";
     }
     ScriptedPathSampler.prototype.tracePath = function (ray, depth, scene) {
         if (depth < 0)
@@ -971,10 +1041,7 @@ var ScriptedPathSampler = (function () {
         }
         for (var _i = 0, dirs_1 = dirs; _i < dirs_1.length; _i++) {
             var dir = dirs_1[_i];
-            var r = {
-                o: add(intersect.p, mul(dir, 1)),
-                d: dir
-            };
+            var r = new Ray(add(intersect.p, mul(dir, 1)), dir);
             var newPaths;
             try {
                 newPaths = this.tracePath(r, depth - 1, scene);
@@ -1057,6 +1124,7 @@ window.onload = function () {
     sampleCanvas.height = sampleCanvas.width;
     scene.sampleSpaceVis = new SampleSpaceVisualization(sampleCanvas.getContext("2d"));
     scene.sampleSpaceVis.drawLabels.subscribe(function (newVal) { return scene.recalculatePaths(); }, scene);
+    scene.availableSamplers.push(new OffsetPathSampler(), new SinglePathSampler());
     sampleCanvas.addEventListener("mousemove", function (e) {
         if (e.button == 0 && !e.shiftKey)
             return;
@@ -1070,7 +1138,7 @@ window.onload = function () {
     scene.addShape(new Circle(new Vec2(250, 280), 50, s));
     scene.addShape(new Light(new Vec2(300, 200), 4, s));
     var deformedCircle = new Circle(new Vec2(250, 150), 30, s);
-    deformedCircle.scale(new Vec2(30.0, 10.0));
+    deformedCircle.scale(new Vec2(30.0, 30.0));
     deformedCircle.rot(0);
     scene.addShape(deformedCircle);
     scene.addShape(new Box(new Vec2(250, 50), new Vec2(20, 40), s));
