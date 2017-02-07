@@ -285,7 +285,32 @@
         var savedData = localStorage.getItem("sampleDirFunc");
 
         if (savedData == null) {
-            savedData = "return [reflect(ray.d, intersect.n)]";
+            savedData =
+"return [reflect(ray.d, intersect.n)]\
+//You can write very complex code here too:\
+//var rand = Math.random(); \
+//\
+//var inside = sign(dot(ray.d, intersect.n));\
+//\
+//var norm = mul(intersect.n, -inside);\
+//\
+//var refr = refract(ray.d, norm, 1.25);\
+//var refl = reflect(ray.d, norm);\
+//\
+//var pos = scene.sampleLight();\
+//\
+//var lightDir = normalize(sub(pos, intersect.p));\
+//\
+//var result = [];\
+//\
+//if(false && dot(lightDir, norm) > 0) result.push(lightDir);\
+//\
+//if(rand < 0.05 ) {\
+//    result.push(refl);\
+//} else {\
+//    result.push(cosineSampleHemisphere(norm));\
+//}\
+//return result;"
         }
 
         editor.setValue(savedData);
