@@ -286,30 +286,30 @@
 
         if (savedData == null) {
             savedData =
-"return [reflect(ray.d, intersect.n)]\
-//You can write very complex code here too:\
-//var rand = Math.random(); \
-//\
-//var inside = sign(dot(ray.d, intersect.n));\
-//\
-//var norm = mul(intersect.n, -inside);\
-//\
-//var refr = refract(ray.d, norm, 1.25);\
-//var refl = reflect(ray.d, norm);\
-//\
-//var pos = scene.sampleLight();\
-//\
-//var lightDir = normalize(sub(pos, intersect.p));\
-//\
-//var result = [];\
-//\
-//if(false && dot(lightDir, norm) > 0) result.push(lightDir);\
-//\
-//if(rand < 0.05 ) {\
-//    result.push(refl);\
-//} else {\
-//    result.push(cosineSampleHemisphere(norm));\
-//}\
+"return [reflect(ray.d, intersect.n)]\n\
+//You can write very complex code here too:\n\
+//var rand = Math.random(); \n\
+//\n\
+//var inside = sign(dot(ray.d, intersect.n));\n\
+//\n\
+//var norm = mul(intersect.n, -inside);\n\
+//\n\
+//var refr = refract(ray.d, norm, 1.25);\n\
+//var refl = reflect(ray.d, norm);\n\
+//\n\
+//var pos = scene.sampleLight();\n\
+//\n\
+//var lightDir = normalize(sub(pos, intersect.p));\n\
+//\n\
+//var result = [];\n\
+//\n\
+//if(false && dot(lightDir, norm) > 0) result.push(lightDir);\n\
+//\n\
+//if(rand < 0.05 ) {\n\
+//    result.push(refl);\n\
+//} else {\n\
+//    result.push(cosineSampleHemisphere(norm));\n\
+//}\n\
 //return result;"
         }
 
