@@ -1,0 +1,7 @@
+@software{pathgraph,
+  author = {{Dario Seyb}},
+  title = {Path Graph},
+  url = {https://darioseyb.com/pathgraph/},
+  version = {0.1.1},
+  date = {2017-02-08},
+}
