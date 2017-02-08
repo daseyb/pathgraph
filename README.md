@@ -13,7 +13,7 @@ Visualization includes a "path density" renderer which shows the distributions o
 
 ![PathDensity](examples/next_event_estimation.svg.png)
 
-Path Graph also provides a primary samples space visualizer which draws the scene from the perspective of the light source.
+Path Graph also provides a primary samples space visualizer which draws the scene from the perspective of the camera.
 
 ![SampleSpace](examples/sample_space_vis_02.gif) 
 
