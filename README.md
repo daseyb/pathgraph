@@ -18,3 +18,7 @@ Path Graph also provides a primary samples space visualizer which draws the scen
 ![SampleSpace](examples/sample_space_vis_02.gif) 
 
 I plan on developing this tool further and include support for features like scriptable material models. If you have a feature request please open an issue!
+
+ ### Papers using PathGraph:
+ - [Analysis of ray batching on the GPU
+]( https://static1.squarespace.com/static/586d9c1c579fb3e289c4fc6a/t/590d31d81e5b6c8e16e0146c/1494036957162/Akshay_Shah_Thesis_CGGT_final.pdf) (Akshay Shah)
